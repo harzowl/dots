@@ -8,6 +8,32 @@ let
   pkgs = nixpkgs.legacyPackages.${system};
 in
 rec {
+  # Returns common NixOS modules for any node.
+  mkNodeModules =
+    {
+      hostname,
+    }:
+    [
+      ({ ... }: {
+        networking.hostName = lib.mkDefault hostname;
+        services.openssh.enable = true;
+      })
+    ];
+
+  # Returns NixOS modules for a Proxmox LXC container.
+  mkLxcModules =
+    {
+      hostname,
+    }:
+    mkNodeModules { inherit hostname; }
+    ++ [
+      ({ modulesPath, ... }: {
+        imports = [ (modulesPath + "/virtualisation/proxmox-lxc.nix") ];
+        nix.settings.sandbox = false;
+        proxmoxLXC.manageNetwork = false;
+      })
+    ];
+
   # Creates a NixOS configuration for a Proxmox LXC container.
   mkLxc =
     {
@@ -17,16 +43,7 @@ rec {
     }:
     lib.nixosSystem {
       inherit system;
-      modules = [
-        ({ modulesPath, ... }: {
-          imports = [ (modulesPath + "/virtualisation/proxmox-lxc.nix") ];
-          networking.hostName = lib.mkDefault hostname;
-          nix.settings.sandbox = false;
-          proxmoxLXC.manageNetwork = false;
-          services.openssh.enable = true;
-        })
-      ]
-      ++ modules;
+      modules = mkLxcModules { inherit hostname; } ++ modules;
     };
 
   # Returns role-based configuration attributes for a user.
