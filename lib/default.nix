@@ -12,11 +12,13 @@ rec {
   mkNodeModules =
     {
       hostname,
+      tags ? [ ],
     }:
     [
       ({ ... }: {
         networking.hostName = lib.mkDefault hostname;
         services.openssh.enable = true;
+        deployment.tags = tags;
       })
     ];
 
@@ -24,8 +26,9 @@ rec {
   mkLxcModules =
     {
       hostname,
+      tags ? [ ],
     }:
-    mkNodeModules { inherit hostname; }
+    mkNodeModules { inherit hostname; tags = [ "lxc" ] ++ tags; }
     ++ [
       ({ modulesPath, ... }: {
         imports = [ (modulesPath + "/virtualisation/proxmox-lxc.nix") ];
