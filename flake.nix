@@ -38,7 +38,7 @@
         "lxc-test" = {
           imports = lib.mkLxcModules {
             hostname = "test";
-            tags = [ "lxc" "test" ];
+            tags = [ "test" ];
           };
           deployment.targetHost = "192.168.1.64";
         }
