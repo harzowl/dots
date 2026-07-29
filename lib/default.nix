@@ -28,7 +28,10 @@ rec {
       hostname,
       tags ? [ ],
     }:
-    mkNodeModules { inherit hostname; tags = [ "lxc" ] ++ tags; }
+    mkNodeModules {
+      inherit hostname;
+      tags = [ "lxc" ] ++ tags;
+    }
     ++ [
       ({ modulesPath, ... }: {
         imports = [ (modulesPath + "/virtualisation/proxmox-lxc.nix") ];
