@@ -3,8 +3,11 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-    colmena.url = "github:zhaofengli/colmena";
-    colmena.inputs.nixpkgs.follows = "nixpkgs";
+
+    colmena = {
+      url = "github:zhaofengli/colmena";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -33,14 +36,19 @@
           nixpkgs = import nixpkgs { inherit system; };
         };
         "lxc-test" = {
-          imports = lib.mkLxcModules { hostname = "test"; };
-          deployment.targetHost = "test";
+          imports = lib.mkLxcModules {
+            hostname = "test";
+            tags = [ "lxc" "test" ];
+          };
+          deployment.targetHost = "192.168.1.64";
         }
         // (lib.mkUser {
           name = "testuser";
           role = "admin";
         })
-        // { system.stateVersion = "26.05"; };
+        // {
+          system.stateVersion = "26.05";
+        };
       };
 
       devShells.${system}.default = pkgs.mkShell {
