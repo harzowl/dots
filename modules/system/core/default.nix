@@ -1,6 +1,7 @@
 { lib, ... }:
 {
   imports = [
+    ./domain
     ./hostname
   ];
 
