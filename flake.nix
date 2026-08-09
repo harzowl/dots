@@ -3,11 +3,13 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
-  outputs = {
-    # NixOS module library: options under dots.system.*
-    nixosModules.default = import ./modules/system;
+  outputs =
+    { self, nixpkgs }@inputs:
+    {
+      # NixOS module library: options under dots.system.*
+      nixosModules.default = import ./modules/system;
 
-    # Home Manager module library: options under dots.home.*
-    homeModules.default = import ./modules/home;
-  };
+      # Home Manager module library: options under dots.home.*
+      homeModules.default = import ./modules/home;
+    };
 }
