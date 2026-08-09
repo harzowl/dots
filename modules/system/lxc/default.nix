@@ -8,6 +8,8 @@ let
   cfg = config.dots.system.lxc;
 in
 {
+  imports = [ (lib.mkIf cfg.enable (modulesPath + "/virtualisation/proxmox-lxc.nix")) ];
+
   options.dots.system.lxc = {
     enable = lib.mkEnableOption "Proxmox LXC container support";
 
@@ -25,7 +27,6 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    imports = [ (modulesPath + "/virtualisation/proxmox-lxc.nix") ];
     nix.settings.sandbox = lib.mkDefault cfg.sandbox;
     proxmoxLXC.manageNetwork = lib.mkDefault cfg.manageNetwork;
   };
