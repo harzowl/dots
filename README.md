@@ -1,2 +1,3 @@
-# dots
-Opinionated Nix system/home config
+# ❄️ dots
+
+Opinionated NixOS system/home configuration.
