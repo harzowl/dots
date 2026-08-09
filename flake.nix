@@ -1,58 +1,13 @@
 {
-  description = "NixOS flake";
+  description = "Opinionated NixOS system/home configuration";
 
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
-    colmena = {
-      url = "github:zhaofengli/colmena";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+  outputs = {
+    # NixOS module library: options under dots.system.*
+    nixosModules.default = import ./modules/system;
+
+    # Home Manager module library: options under dots.home.*
+    homeModules.default = import ./modules/home;
   };
-
-  outputs =
-    { nixpkgs, colmena, ... }:
-    let
-      system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
-      lib = import ./lib { inherit nixpkgs system; };
-    in
-    {
-      nixosConfigurations = {
-        lxc-test = lib.mkLxc {
-          hostname = "test";
-          modules = [
-            (lib.mkUser {
-              name = "testuser";
-              role = "admin";
-            })
-            { system.stateVersion = "26.05"; }
-          ];
-        };
-      };
-
-      colmenaHive = colmena.lib.makeHive {
-        meta = {
-          nixpkgs = import nixpkgs { inherit system; };
-        };
-        "lxc-test" = {
-          imports = lib.mkLxcModules {
-            hostname = "test";
-            tags = [ "test" ];
-          };
-          deployment.targetHost = "192.168.1.64";
-        }
-        // (lib.mkUser {
-          name = "testuser";
-          role = "admin";
-        })
-        // {
-          system.stateVersion = "26.05";
-        };
-      };
-
-      devShells.${system}.default = pkgs.mkShell {
-        packages = [ colmena.packages.${system}.colmena ];
-      };
-    };
 }
