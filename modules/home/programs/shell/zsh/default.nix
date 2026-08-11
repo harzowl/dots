@@ -16,12 +16,19 @@ in
       default = pkgs.zsh;
       description = "The zsh package to use.";
     };
+
+    settings = lib.mkOption {
+      type = lib.types.attrsOf lib.types.anything;
+      default = { };
+      description = "Additional settings forwarded verbatim to zsh shell";
+    };
   };
 
   config = lib.mkIf cfg.enable {
     programs.zsh = {
       enable = true;
       package = cfg.package;
-    };
+    }
+    // cfg.settings;
   };
 }
