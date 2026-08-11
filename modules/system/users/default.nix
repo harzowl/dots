@@ -41,7 +41,7 @@ in
           initialPassword = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
-            description = "Initial password (hashed) for the user.";
+            description = "Initial password in plaintext (hashed with SHA-512 at activation). Use initialHashedPassword for a pre-hashed value.";
           };
 
           displayName = lib.mkOption {
