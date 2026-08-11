@@ -4,9 +4,7 @@
   ...
 }:
 let
-  systemCfg = config.dots.system;
-  shellCfg = systemCfg.programs.shell;
-  cfg = systemCfg.users;
+  cfg = config.dots.system.users;
 in
 {
   options.dots.system.users = lib.mkOption {
@@ -74,8 +72,8 @@ in
               openssh.authorizedKeys.keys = u.keys;
             }
             (lib.mkIf (u.role == "admin") { extraGroups = [ "wheel" ]; })
-            (lib.mkIf (u.shell == "fish") { shell = shellCfg.fish.package; })
-            (lib.mkIf (u.shell == "zsh") { shell = shellCfg.zsh.package; })
+            (lib.mkIf (u.shell == "fish") { shell = config.dots.system.programs.shell.fish.package; })
+            (lib.mkIf (u.shell == "zsh") { shell = config.dots.system.programs.shell.zsh.package; })
             (lib.mkIf (u.initialPassword != null) { initialPassword = u.initialPassword; })
             (lib.mkIf (u.displayName != null) { description = u.displayName; })
           ]
@@ -84,11 +82,11 @@ in
     })
 
     (lib.mkIf (lib.any (u: u.shell == "fish") (lib.attrValues cfg)) {
-      shellCfg.fish.enable = lib.mkDefault true;
+      dots.system.programs.shell.fish.enable = lib.mkDefault true;
     })
 
     (lib.mkIf (lib.any (u: u.shell == "zsh") (lib.attrValues cfg)) {
-      shellCfg.zsh.enable = lib.mkDefault true;
+      dots.system.programs.shell.zsh.enable = lib.mkDefault true;
     })
   ];
 }
