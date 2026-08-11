@@ -15,19 +15,19 @@ in
 
     manageNetwork = lib.mkOption {
       type = lib.types.bool;
-      default = false;
-      description = "Whether the container manages its own network.";
+      default = true;
+      description = "Let NixOS manage the network configuration.";
     };
 
-    sandbox = lib.mkOption {
+    disableSandbox = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Disable the nix sandbox (required inside LXC).";
+      description = "Disable the Nix sandbox (required inside LXC).";
     };
   };
 
   config = lib.mkIf cfg.enable {
-    nix.settings.sandbox = lib.mkDefault cfg.sandbox;
+    nix.settings.sandbox = lib.mkDefault (!cfg.disableSandbox);
     proxmoxLXC.manageNetwork = lib.mkDefault cfg.manageNetwork;
   };
 }
