@@ -77,6 +77,7 @@ in
             (lib.mkIf (u.shell == "fish") { shell = shellCfg.fish.package; })
             (lib.mkIf (u.shell == "zsh") { shell = shellCfg.zsh.package; })
             (lib.mkIf (u.initialPassword != null) { initialPassword = u.initialPassword; })
+            (lib.mkIf (u.displayName != null) { description = u.displayName; })
           ]
         )
       ) cfg;
