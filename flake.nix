@@ -4,7 +4,7 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
   outputs =
-    { self, nixpkgs }@inputs:
+    { self, ... }:
     {
       # NixOS module library: options under dots.system.*
       nixosModules.default = import ./modules/system;
