@@ -27,8 +27,9 @@ in
   config = lib.mkIf cfg.enable {
     programs.zsh = {
       enable = true;
-      package = cfg.package;
     }
     // cfg.settings;
+
+    environment.systemPackages = [ cfg.package ];
   };
 }
