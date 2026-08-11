@@ -1,11 +1,15 @@
-{ config, lib, ... }:
 let
-  cfg = config.dots.system.services.openssh;
+  mkDotsModule = import ../../../../lib/mkDotsModule.nix;
 in
-{
-  options.dots.system.services.openssh.enable = lib.mkEnableOption "OpenSSH server.";
+mkDotsModule {
+  optionPath = [
+    "system"
+    "services"
+    "openssh"
+  ];
+  description = "OpenSSH server";
 
-  config = lib.mkIf cfg.enable {
-    services.openssh.enable = cfg.enable;
+  toConfig = _: _: {
+    services.openssh.enable = true;
   };
 }
