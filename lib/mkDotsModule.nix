@@ -14,7 +14,7 @@
   when ? (cfg: cfg.enable),
   imports ? [ ],
 }:
-{ config, lib, ... }@args:
+{ config, lib, pkgs, modulesPath, ... }@args:
 let
   cfg = lib.getAttrFromPath ([ "dots" ] ++ optionPath) config;
 in
