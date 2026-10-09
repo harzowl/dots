@@ -6,6 +6,7 @@
 }:
 let
   cfg = config.dots.system.programs.shell.fish;
+  fishTheme = import ../../../../../lib/fishTheme.nix;
 in
 {
   options.dots.system.programs.shell.fish = {
@@ -30,5 +31,7 @@ in
       package = cfg.package;
     }
     // cfg.settings;
+
+    environment.etc."fish/conf.d/dots-theme.fish".text = fishTheme;
   };
 }

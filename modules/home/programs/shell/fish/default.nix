@@ -3,6 +3,7 @@
 let
   path = root ++ [ "programs" "shell" "fish" ];
   cfg = lib.getAttrFromPath path config;
+  fishTheme = import ../../../../../lib/fishTheme.nix;
 in
 {
   options = lib.setAttrByPath path {
@@ -29,5 +30,7 @@ in
       package = cfg.package;
     }
     // cfg.settings;
+
+    xdg.configFile."fish/conf.d/dots-theme.fish".text = fishTheme;
   };
 }
