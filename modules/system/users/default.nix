@@ -57,7 +57,7 @@ in
           passwordlessSudo = lib.mkOption {
             type = lib.types.bool;
             default = false;
-            description = "Grant passwordless sudo (`NOPASSWD: ALL`); intended for admins (role = \"admin\").";
+            description = "Add the user to the `nopasswd` group, whose members get passwordless sudo; intended for admins (role = \"admin\").";
           };
         };
       }
@@ -78,6 +78,7 @@ in
               openssh.authorizedKeys.keys = u.keys;
             }
             (lib.mkIf (u.role == "admin") { extraGroups = [ "wheel" ]; })
+            (lib.mkIf (u.role == "admin" && u.passwordlessSudo) { extraGroups = [ "nopasswd" ]; })
             (lib.mkIf (u.shell == "fish") { shell = config.dots.system.programs.shell.fish.package; })
             (lib.mkIf (u.shell == "zsh") { shell = config.dots.system.programs.shell.zsh.package; })
             (lib.mkIf (u.initialPassword != null) { initialPassword = u.initialPassword; })
@@ -95,13 +96,21 @@ in
       dots.system.programs.shell.zsh.enable = lib.mkDefault true;
     })
 
-    (lib.mkIf (lib.any (u: u.passwordlessSudo) (lib.attrValues cfg)) {
-      security.sudo.extraRules = lib.mapAttrsToList
-        (name: _: {
-          users = [ name ];
-          commands = [ { command = "ALL"; options = [ "NOPASSWD" ]; } ];
-        })
-        (lib.filterAttrs (_: u: u.passwordlessSudo) cfg);
+    {
+      assertions = [
+        {
+          assertion = lib.all (u: u.role == "admin" || !u.passwordlessSudo) (lib.attrValues cfg);
+          message = "`dots.system.users.<name>.passwordlessSudo` requires `role = \"admin\"`.";
+        }
+      ];
+    }
+
+    (lib.mkIf (lib.any (u: u.role == "admin" && u.passwordlessSudo) (lib.attrValues cfg)) {
+      # A dedicated group with passwordless sudo; opted-in admins are added to it
+      # (see the user's `extraGroups`). `!authenticate` rather than a `NOPASSWD:`
+      # rule, because the default `%wheel` rule still prompts for `sudo -v`.
+      users.groups.nopasswd = { };
+      security.sudo.extraConfig = "Defaults:%nopasswd !authenticate";
     })
   ];
 }
