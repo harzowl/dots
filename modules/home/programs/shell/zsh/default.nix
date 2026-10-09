@@ -1,15 +1,14 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ root ? [ "dots" "home" ] }:
+{ config, lib, pkgs, loginShell ? null, ... }:
 let
-  cfg = config.dots.home.programs.shell.zsh;
+  path = root ++ [ "programs" "shell" "zsh" ];
+  cfg = lib.getAttrFromPath path config;
 in
 {
-  options.dots.home.programs.shell.zsh = {
-    enable = lib.mkEnableOption "zsh shell";
+  options = lib.setAttrByPath path {
+    # Self-enable when the user's login shell is zsh (loginShell is provided by
+    # the dots home-manager integration); overridable.
+    enable = lib.mkEnableOption "zsh shell" // { default = loginShell == "zsh"; };
 
     package = lib.mkOption {
       type = lib.types.package;

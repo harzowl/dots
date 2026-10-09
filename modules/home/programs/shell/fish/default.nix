@@ -1,15 +1,14 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+{ root ? [ "dots" "home" ] }:
+{ config, lib, pkgs, loginShell ? null, ... }:
 let
-  cfg = config.dots.home.programs.shell.fish;
+  path = root ++ [ "programs" "shell" "fish" ];
+  cfg = lib.getAttrFromPath path config;
 in
 {
-  options.dots.home.programs.shell.fish = {
-    enable = lib.mkEnableOption "fish shell";
+  options = lib.setAttrByPath path {
+    # Self-enable when the user's login shell is fish (loginShell is provided by
+    # the dots home-manager integration); overridable.
+    enable = lib.mkEnableOption "fish shell" // { default = loginShell == "fish"; };
 
     package = lib.mkOption {
       type = lib.types.package;
