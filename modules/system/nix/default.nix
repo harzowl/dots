@@ -26,6 +26,15 @@ in
       default = false;
       description = "Hard-link identical files in the Nix store to save space (`nix.settings.auto-optimise-store`).";
     };
+
+    experimentalFeatures = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [
+        "nix-command"
+        "flakes"
+      ];
+      description = "Value of `nix.settings.experimental-features`. Defaults to `nix-command` and `flakes`.";
+    };
   };
 
   config = lib.mkMerge [
@@ -39,6 +48,10 @@ in
 
     (lib.mkIf cfg.autoOptimiseStore {
       nix.settings.auto-optimise-store = true;
+    })
+
+    (lib.mkIf (cfg.experimentalFeatures != [ ]) {
+      nix.settings.experimental-features = cfg.experimentalFeatures;
     })
   ];
 }
