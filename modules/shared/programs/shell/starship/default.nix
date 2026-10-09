@@ -263,12 +263,20 @@ mkSharedProgram {
       settings = args.lib.recursiveUpdate defaults cfg.settings;
     };
   };
-
-  system = args: cfg: {
-    programs.starship = {
-      enable = true;
-      inherit (cfg) package;
-      settings = args.lib.recursiveUpdate defaults cfg.settings;
-    };
-  };
+  system =
+    args: cfg:
+    args.lib.mkMerge [
+      {
+        programs.starship = {
+          enable = true;
+          inherit (cfg) package;
+          settings = args.lib.recursiveUpdate defaults cfg.settings;
+        };
+      }
+      # `hostname.ssh_only` keys off SSH_* env; `sudo` resets the environment, so
+      # keep them for the remote host to still show in `sudo`/`sudo -i` shells.
+      {
+        security.sudo.extraConfig = ''Defaults env_keep += "SSH_CONNECTION SSH_CLIENT SSH_TTY"'';
+      }
+    ];
 }
