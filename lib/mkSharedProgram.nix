@@ -10,8 +10,9 @@
 # `options`, `home`, `system` and `imports` are functions of the module args when
 # they need them; `home` and `system` take `args` first, then `cfg`.
 {
-  target, # "system" | "home" — the tree currently being evaluated
-  optionPath, # path under `dots.<target>.`, e.g. [ "programs" "monitoring" "bottom" ]
+  target, # "system" | "home" — which projection to emit
+  root ? [ "dots" target ], # option-path prefix the program is declared under
+  optionPath, # path under `root`, e.g. [ "programs" "monitoring" "bottom" ]
   description, # shown in the generated `enable` option
   options ? (_: { }),
   home, # args -> cfg -> attrset (home-manager config)
@@ -20,13 +21,13 @@
 }:
 { config, lib, pkgs, modulesPath, ... }@args:
 let
-  fullPath = [ target ] ++ optionPath;
-  cfg = lib.getAttrFromPath ([ "dots" ] ++ fullPath) config;
+  fullPath = root ++ optionPath;
+  cfg = lib.getAttrFromPath fullPath config;
 in
 {
   imports = if lib.isFunction imports then imports args else imports;
 
-  options = lib.setAttrByPath ([ "dots" ] ++ fullPath) (
+  options = lib.setAttrByPath fullPath (
     { enable = lib.mkEnableOption description; } // options args
   );
 
