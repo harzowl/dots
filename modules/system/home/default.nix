@@ -21,11 +21,19 @@
 
     users = lib.mapAttrs (
       name: userCfg:
+      let
+        shell = config.dots.system.users.${name}.shell or null;
+      in
       lib.mkMerge [
         { imports = [ (import ../../home { root = [ ]; }) ]; }
-        # Shell modules read `loginShell` and enable themselves when it matches,
-        # so aliases land in a shell that is actually generated.
-        { _module.args.loginShell = config.dots.system.users.${name}.shell or null; }
+        # Enable the login shell's program so its config (theme, aliases, ...) is
+        # actually generated. Options live at `programs.shell.<shell>`.
+        (lib.optionalAttrs (shell == "fish") {
+          programs.shell.fish.enable = lib.mkDefault true;
+        })
+        (lib.optionalAttrs (shell == "zsh") {
+          programs.shell.zsh.enable = lib.mkDefault true;
+        })
         userCfg
       ]
     ) config.dots.home.users;
