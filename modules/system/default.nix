@@ -5,5 +5,6 @@
     ./programs
     ./services
     ./users
+    (import ../shared { target = "system"; })
   ];
 }
