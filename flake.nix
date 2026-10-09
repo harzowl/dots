@@ -26,5 +26,9 @@
 
       # Home Manager module library: options under dots.home.*
       homeModules.default = import ./modules/home;
+
+      # Reusable, overridable baseline bundles (see presets/). They are NixOS
+      # modules, so compose them with `imports = [ dots.nixosModules.presetServer ];`.
+      nixosModules.presetServer = import ./presets/server.nix;
     };
 }
