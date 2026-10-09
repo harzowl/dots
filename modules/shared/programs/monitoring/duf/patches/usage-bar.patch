@@ -1,0 +1,28 @@
+--- a/table.go
++++ b/table.go
+@@ -402,20 +402,11 @@
+ 		filledPart := termenv.String(filledStr).Foreground(fgColor)
+ 		emptyPart := termenv.String(emptyStr)
+ 		if opts.StyleName == "unicode" {
+-			// Add background to filled part to prevent black spaces in half blocks
+-			// Use a background color that complements the foreground
+-			var bgColor termenv.Color
+-			switch {
+-			case usage >= redUsage:
+-				bgColor = theme.colorBgRed
+-			case usage >= yellowUsage:
+-				bgColor = theme.colorBgYellow
+-			default:
+-				bgColor = theme.colorBgGreen
+-			}
+-			filledPart = filledPart.Background(bgColor).Foreground(fgColor)
+-			// Use a neutral background for empty areas
+-			emptyPart = emptyPart.Background(bgColor)
++			// A single dim track for the whole bar, shared by the filled and empty
++			// parts, so fractional blocks render half-filled over the track.
++			track := env.Color("8")
++			filledPart = filledPart.Background(track).Foreground(fgColor)
++			emptyPart = emptyPart.Background(track)
+ 		}
+ 
+ 		s := fmt.Sprintf(format, filledPart, emptyPart, percentWidth, fmt.Sprintf("%.1f%%", usage*100))
