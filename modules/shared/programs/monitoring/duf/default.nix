@@ -6,10 +6,12 @@ let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
   mkCliFlags = import ../../../../../lib/mkCliFlags.nix;
 
-  # duf lists a `special` table (pseudo/duplicate/inaccessible filesystems) by
-  # default; hide it unless the user overrides `settings.hide`.
+  # Defaults: hide duf's `special` table (pseudo/duplicate/inaccessible
+  # filesystems), and use duf's `ansi` theme so colors come from the terminal's
+  # base16 palette instead of its built-in RGB theme. Override via `settings`.
   defaults = {
     hide = [ "special" ];
+    theme = "ansi";
   };
 
   wrapper =
@@ -48,8 +50,8 @@ mkSharedProgram {
           lists are comma-joined, and other values are passed as the argument.
           For example `{ only = [ "special" ]; }` runs `duf --only special`.
 
-          Merged over the built-in defaults (`--hide special`): setting a key
-          overrides that default, other defaults stay.
+          Merged over the built-in defaults (`--hide special`, `--theme ansi`):
+          setting a key overrides that default, other defaults stay.
         '';
       };
     };
