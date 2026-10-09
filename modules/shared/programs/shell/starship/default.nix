@@ -25,12 +25,12 @@ let
       base07 = "15";
       base08 = "1";
       base09 = "16";
-      base0A = "3";
-      base0B = "2";
-      base0C = "6";
-      base0D = "4";
-      base0E = "5";
-      base0F = "17";
+      base0a = "3";
+      base0b = "2";
+      base0c = "6";
+      base0d = "4";
+      base0e = "5";
+      base0f = "17";
     };
 
     format =
@@ -39,10 +39,10 @@ let
       + "$username"
       + "[](bg:base09 fg:base08)"
       + "$directory"
-      + "[](bg:base0A fg:base09)"
+      + "[](bg:base0a fg:base09)"
       + "$git_branch"
       + "$git_status"
-      + "[](bg:base0B fg:base0A)"
+      + "[](bg:base0b fg:base0a)"
       + "$c"
       + "$rust"
       + "$golang"
@@ -52,11 +52,11 @@ let
       + "$kotlin"
       + "$haskell"
       + "$python"
-      + "[](fg:base0B bg:base0C)"
+      + "[](fg:base0b bg:base0c)"
       + "$conda"
-      + "[](fg:base0C bg:base0D)"
+      + "[](fg:base0c bg:base0d)"
       + "$time"
-      + "[ ](fg:base0D)"
+      + "[ ](fg:base0d)"
       + "$cmd_duration"
       + "$line_break"
       + "$character";
@@ -113,78 +113,78 @@ let
 
     git_branch = {
       symbol = "";
-      style = "bg:base0A";
-      format = "[[ $symbol $branch ](fg:base01 bg:base0A)]($style)";
+      style = "bg:base0a";
+      format = "[[ $symbol $branch ](fg:base01 bg:base0a)]($style)";
     };
 
     git_status = {
-      style = "bg:base0A";
-      format = "[[($all_status$ahead_behind )](fg:base01 bg:base0A)]($style)";
+      style = "bg:base0a";
+      format = "[[($all_status$ahead_behind )](fg:base01 bg:base0a)]($style)";
     };
 
     nodejs = {
       symbol = "";
-      style = "bg:base0B";
-      format = "[[ $symbol( $version) ](fg:base01 bg:base0B)]($style)";
+      style = "bg:base0b";
+      format = "[[ $symbol( $version) ](fg:base01 bg:base0b)]($style)";
     };
 
     c = {
       symbol = " ";
-      style = "bg:base0B";
-      format = "[[ $symbol( $version) ](fg:base01 bg:base0B)]($style)";
+      style = "bg:base0b";
+      format = "[[ $symbol( $version) ](fg:base01 bg:base0b)]($style)";
     };
 
     rust = {
       symbol = "";
-      style = "bg:base0B";
-      format = "[[ $symbol( $version) ](fg:base01 bg:base0B)]($style)";
+      style = "bg:base0b";
+      format = "[[ $symbol( $version) ](fg:base01 bg:base0b)]($style)";
     };
 
     golang = {
       symbol = "";
-      style = "bg:base0B";
-      format = "[[ $symbol( $version) ](fg:base01 bg:base0B)]($style)";
+      style = "bg:base0b";
+      format = "[[ $symbol( $version) ](fg:base01 bg:base0b)]($style)";
     };
 
     php = {
       symbol = "";
-      style = "bg:base0B";
-      format = "[[ $symbol( $version) ](fg:base01 bg:base0B)]($style)";
+      style = "bg:base0b";
+      format = "[[ $symbol( $version) ](fg:base01 bg:base0b)]($style)";
     };
 
     java = {
       symbol = " ";
-      style = "bg:base0B";
-      format = "[[ $symbol( $version) ](fg:base01 bg:base0B)]($style)";
+      style = "bg:base0b";
+      format = "[[ $symbol( $version) ](fg:base01 bg:base0b)]($style)";
     };
 
     kotlin = {
       symbol = "";
-      style = "bg:base0B";
-      format = "[[ $symbol( $version) ](fg:base01 bg:base0B)]($style)";
+      style = "bg:base0b";
+      format = "[[ $symbol( $version) ](fg:base01 bg:base0b)]($style)";
     };
 
     haskell = {
       symbol = "";
-      style = "bg:base0B";
-      format = "[[ $symbol( $version) ](fg:base01 bg:base0B)]($style)";
+      style = "bg:base0b";
+      format = "[[ $symbol( $version) ](fg:base01 bg:base0b)]($style)";
     };
 
     python = {
       symbol = "";
-      style = "bg:base0B";
-      format = "[[ $symbol( $version)(\(#$virtualenv\)) ](fg:base01 bg:base0B)]($style)";
+      style = "bg:base0b";
+      format = "[[ $symbol( $version)(\(#$virtualenv\)) ](fg:base01 bg:base0b)]($style)";
     };
 
     docker_context = {
       symbol = "";
-      style = "bg:base0C";
-      format = "[[ $symbol( $context) ](fg:base01 bg:base0C)]($style)";
+      style = "bg:base0c";
+      format = "[[ $symbol( $context) ](fg:base01 bg:base0c)]($style)";
     };
 
     conda = {
       symbol = "  ";
-      style = "fg:base01 bg:base0C";
+      style = "fg:base01 bg:base0c";
       format = "[$symbol$environment ]($style)";
       ignore_base = false;
     };
@@ -192,26 +192,26 @@ let
     time = {
       disabled = false;
       time_format = "%R";
-      style = "bg:base0D";
-      format = "[[  $time ](fg:base01 bg:base0D)]($style)";
+      style = "bg:base0d";
+      format = "[[  $time ](fg:base01 bg:base0d)]($style)";
     };
 
     line_break.disabled = false;
 
     character = {
       disabled = false;
-      success_symbol = "[❯](bold fg:base0B)";
+      success_symbol = "[❯](bold fg:base0b)";
       error_symbol = "[❯](bold fg:base08)";
-      vimcmd_symbol = "[❮](bold fg:base0B)";
-      vimcmd_replace_one_symbol = "[❮](bold fg:base0D)";
-      vimcmd_replace_symbol = "[❮](bold fg:base0D)";
-      vimcmd_visual_symbol = "[❮](bold fg:base0A)";
+      vimcmd_symbol = "[❮](bold fg:base0b)";
+      vimcmd_replace_one_symbol = "[❮](bold fg:base0d)";
+      vimcmd_replace_symbol = "[❮](bold fg:base0d)";
+      vimcmd_visual_symbol = "[❮](bold fg:base0a)";
     };
 
     cmd_duration = {
       show_milliseconds = true;
       format = " in $duration ";
-      style = "bg:base0D";
+      style = "bg:base0d";
       disabled = false;
     };
     };
