@@ -1,6 +1,7 @@
 {
   imports = [
     ./core
+    ./host-type
     ./lxc
     ./nix
     ./security
