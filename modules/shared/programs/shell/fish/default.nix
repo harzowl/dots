@@ -4,7 +4,7 @@
 { target, root ? [ "dots" target ] }:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
-  fishTheme = import ./theme.nix;
+  fishTheme = builtins.readFile ./dots-theme.fish;
 in
 mkSharedProgram {
   inherit target root;
