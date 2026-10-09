@@ -1,7 +1,11 @@
+{ root ? [ "dots" "home" ], ... }:
 {
   imports = [
-    ./core
-    ./programs
-    (import ../shared { target = "home"; })
+    (import ./core { inherit root; })
+    (import ./programs { inherit root; })
+    (import ../shared {
+      target = "home";
+      inherit root;
+    })
   ];
 }
