@@ -1,17 +1,19 @@
 # Which platform the host runs on. Driven by the `hostType` *module argument*,
 # not an option: `imports` is evaluated before `config`, so a platform module
-# cannot be chosen by reading a `dots.system.*` option. Consumers pass it via
-# `specialArgs`:
+# cannot be chosen by reading a `dots.system.*` option. It has NO default and
+# MUST be passed via `specialArgs` — a module argument without `specialArgs`
+# would be looked up in `_module.args`, which needs `config`, and reading
+# `config` during evaluation then recurses. So a host does:
 #
 #   lib.nixosSystem {
 #     specialArgs = { hostType = "lxc"; };
 #     ...
 #   }
 #
-#   "generic"      — bare metal / VM (nothing extra).
+#   "generic"      — bare metal / VM (pass this explicitly; nothing extra).
 #   "lxc"          — Proxmox LXC guest; reuses ../lxc (`dots.system.lxc`).
 #   "digitalOcean" — DigitalOcean image layout (GRUB to /dev/vda, cloud-init).
-{ hostType ? "generic", lib, modulesPath, ... }:
+{ hostType, lib, modulesPath, ... }:
 {
   imports = lib.optional (hostType == "digitalOcean")
     (modulesPath + "/virtualisation/digital-ocean-config.nix");
