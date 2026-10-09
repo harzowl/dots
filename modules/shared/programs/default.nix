@@ -1,6 +1,6 @@
-{ target }:
+{ target, root ? [ "dots" target ] }:
 {
   imports = [
-    (import ./monitoring { inherit target; })
+    (import ./monitoring { inherit target root; })
   ];
 }

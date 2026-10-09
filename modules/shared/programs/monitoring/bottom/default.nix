@@ -6,7 +6,7 @@
 #
 #   system target -> install the package system-wide
 #   home target   -> manage `programs.bottom` (package + settings) per user
-{ target }:
+{ target, root ? [ "dots" target ] }:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
   mkShellAlias = import ../../../../../lib/mkShellAlias.nix;
@@ -15,7 +15,7 @@ let
   };
 in
 mkSharedProgram {
-  inherit target;
+  inherit target root;
   optionPath = [
     "programs"
     "monitoring"
