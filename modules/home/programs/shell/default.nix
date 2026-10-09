@@ -1,6 +1,7 @@
+{ root ? [ "dots" "home" ], ... }:
 {
   imports = [
-    ./fish
-    ./zsh
+    (import ./fish { inherit root; })
+    (import ./zsh { inherit root; })
   ];
 }

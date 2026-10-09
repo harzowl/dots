@@ -1,5 +1,4 @@
+{ root ? [ "dots" "home" ], ... }:
 {
-  imports = [
-    ./shell
-  ];
+  imports = [ (import ./shell { inherit root; }) ];
 }
