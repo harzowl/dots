@@ -8,7 +8,13 @@
 # terminal's own base16 ANSI palette. No stylix and no hardcoded hex, so changing
 # the terminal theme changes the prompt. Values use the standard base16-shell
 # 256-color indices (0-21).
-{ target, root ? [ "dots" target ] }:
+{
+  target,
+  root ? [
+    "dots"
+    target
+  ],
+}:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
 
@@ -95,7 +101,7 @@ let
       # identical on the local host.
       ssh_only = true;
       style = "bg:base08 fg:base01";
-      format = "[@$hostname]($style)";
+      format = "[ 󱘖 $hostname]($style)";
     };
 
     username = {
@@ -223,7 +229,7 @@ let
       style = "bg:base0d";
       disabled = false;
     };
-    };
+  };
 in
 mkSharedProgram {
   inherit target root;
@@ -250,23 +256,19 @@ mkSharedProgram {
       };
     };
 
-  home =
-    args: cfg:
-    {
-      programs.starship = {
-        enable = true;
-        inherit (cfg) package;
-        settings = args.lib.recursiveUpdate defaults cfg.settings;
-      };
+  home = args: cfg: {
+    programs.starship = {
+      enable = true;
+      inherit (cfg) package;
+      settings = args.lib.recursiveUpdate defaults cfg.settings;
     };
+  };
 
-  system =
-    args: cfg:
-    {
-      programs.starship = {
-        enable = true;
-        inherit (cfg) package;
-        settings = args.lib.recursiveUpdate defaults cfg.settings;
-      };
+  system = args: cfg: {
+    programs.starship = {
+      enable = true;
+      inherit (cfg) package;
+      settings = args.lib.recursiveUpdate defaults cfg.settings;
     };
+  };
 }
