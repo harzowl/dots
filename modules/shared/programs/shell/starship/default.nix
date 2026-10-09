@@ -101,7 +101,7 @@ let
       # identical on the local host.
       ssh_only = true;
       style = "bg:base08 fg:base01";
-      format = "[ 󱘖 $hostname]($style)";
+      format = "[ 󰱠 $hostname]($style)";
     };
 
     username = {
