@@ -1,0 +1,11 @@
+--- a/themes.go
++++ b/themes.go
+@@ -62,7 +62,7 @@
+ 		colorYellow:   env.Color("11"),
+ 		colorGreen:    env.Color("10"),
+ 		colorBlue:     env.Color("12"),
+-		colorGray:     env.Color("7"),
++		colorGray:     env.Color("5"),
+ 		colorMagenta:  env.Color("13"),
+ 		colorCyan:     env.Color("8"),
+ 		colorBgRed:    env.Color("1"),
