@@ -2,5 +2,6 @@
 {
   imports = [
     (import ./monitoring { inherit target root; })
+    (import ./shell { inherit target root; })
   ];
 }
