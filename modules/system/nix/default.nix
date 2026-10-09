@@ -5,7 +5,7 @@ let
 in
 {
   options.dots.system.nix = {
-    gc = {
+    garbageCollector = {
       enable = lib.mkEnableOption "periodic Nix store garbage collection";
 
       dates = lib.mkOption {
@@ -38,11 +38,11 @@ in
   };
 
   config = lib.mkMerge [
-    (lib.mkIf cfg.gc.enable {
+    (lib.mkIf cfg.garbageCollector.enable {
       nix.gc = {
         automatic = true;
-        inherit (cfg.gc) dates;
-        options = "--delete-older-than ${toString cfg.gc.keepDays}d";
+        inherit (cfg.garbageCollector) dates;
+        options = "--delete-older-than ${toString cfg.garbageCollector.keepDays}d";
       };
     })
 
