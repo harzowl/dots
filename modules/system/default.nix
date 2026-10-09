@@ -2,6 +2,7 @@
   imports = [
     ./core
     ./lxc
+    ./nix
     ./programs
     ./services
     ./users
