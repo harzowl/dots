@@ -1,10 +1,11 @@
 let
-  mkDotsModule = import ../../../../lib/mkDotsModule.nix;
+  mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
 in
 mkDotsModule {
   optionPath = [
     "system"
     "services"
+    "mail"
     "stalwart"
   ];
   description = "Stalwart mail server";

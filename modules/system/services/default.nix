@@ -1,6 +1,6 @@
 {
   imports = [
-    ./openssh
-    ./stalwart
+    ./access
+    ./mail
   ];
 }
