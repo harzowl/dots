@@ -102,6 +102,17 @@ in
       example = [ "stalwart.service" ];
       description = "Units ordered after the resolver so they can read the materialised secrets.";
     };
+
+    files = lib.mkOption {
+      type = lib.types.attrsOf lib.types.path;
+      default = { };
+      example = { "secrets.enc.yaml" = ../secrets.enc.yaml; };
+      description = ''
+        Extra files deployed under `/etc/secretspec/<name>` for the provider to
+        read, e.g. the SOPS-encrypted file referenced by the manifest. Deployed
+        through `environment.etc` so they are tracked into the system closure.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -111,6 +122,13 @@ in
         message = "dots.system.secretspec.manifest must be set.";
       }
     ];
+
+    # The manifest (and any provider files) go under /etc/secretspec so they
+    # enter the system closure: a bare store path referenced only from the
+    # unit's script is not tracked and would be missing on the target.
+    environment.etc =
+      { "secretspec/secretspec.toml".source = cfg.manifest; }
+      // lib.mapAttrs' (name: path: lib.nameValuePair "secretspec/${name}" { source = path; }) cfg.files;
 
     systemd.services = lib.mkMerge [
       {
@@ -131,20 +149,20 @@ in
         set -eu
         ${lib.optionalString cfg.envFile ''
           ${cfg.package}/bin/secretspec export \
-            --file ${manifest}${profileArg}${scopeArg}${providerArg} --format dotenv \
+            --file /etc/secretspec/secretspec.toml${profileArg}${scopeArg}${providerArg} --format dotenv \
             > /run/secretspec/env
           chmod 600 /run/secretspec/env
         ''}
         ${lib.concatMapStrings (name: ''
           ${cfg.package}/bin/secretspec get \
-            --file ${manifest}${profileArg}${providerArg} ${lib.escapeShellArg name} \
+            --file /etc/secretspec/secretspec.toml${profileArg}${providerArg} ${lib.escapeShellArg name} \
             > /run/secretspec/${lib.escapeShellArg name}
           chmod 600 /run/secretspec/${lib.escapeShellArg name}
         '') cfg.secrets}
       '';
         };
       }
-      (lib.genAttrs cfg.consumers (unit: {
+      (lib.genAttrs (map (u: lib.removeSuffix ".service" u) cfg.consumers) (_: {
         after = [ "secretspec.service" ];
         wants = [ "secretspec.service" ];
       }))
