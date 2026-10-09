@@ -1,3 +1,3 @@
 # ❄️ dots
 
-Opinionated NixOS system/home configuration.
+Simplified NixOS system/home configuration.
