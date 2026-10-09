@@ -1,23 +1,13 @@
 { config, lib, ... }:
-let
-  # Re-root the shared home programs directly under each user, so a user's
-  # config reads `dots.home.users.<name>.programs.monitoring.bottom`.
-  homePrograms = import ../../shared {
-    target = "home";
-    root = [ ];
-  };
-
-  # Provides the `home.stateVersion` default (dots.home.stateVersion).
-  homeCore = import ../../home/core;
-in
 {
   options.dots.home.users = lib.mkOption {
     type = lib.types.attrsOf lib.types.anything;
     default = { };
     description = ''
       Per-user Home Manager configuration. Each entry is wired to
-      `home-manager.users.<name>`, with the dots home tree rooted directly under
-      the user, e.g. `dots.home.users.<name>.programs.monitoring.bottom.enable`.
+      `home-manager.users.<name>`, with the dots home tree (core, programs and
+      shell aliases) rooted directly under the user, e.g.
+      `dots.home.users.<name>.programs.monitoring.bottom.enable`.
     '';
   };
 
@@ -26,9 +16,12 @@ in
     useUserPackages = true;
 
     users = lib.mapAttrs (
-      _: userCfg:
+      name: userCfg:
       lib.mkMerge [
-        { imports = [ homeCore homePrograms ]; }
+        { imports = [ (import ../../home { root = [ ]; }) ]; }
+        # Shell modules read `loginShell` and enable themselves when it matches,
+        # so aliases land in a shell that is actually generated.
+        { _module.args.loginShell = config.dots.system.users.${name}.shell or null; }
         userCfg
       ]
     ) config.dots.home.users;
