@@ -3,8 +3,8 @@
     ./core
     ./lxc
     ./nix
+    ./security
     ./services
-    ./sudo
     ./users
     (import ../shared { target = "system"; })
   ];
