@@ -1,10 +1,9 @@
+{ root ? [ "dots" "home" ] }:
 { lib, ... }:
 {
-  imports = [
-    ./state
-  ];
+  imports = [ (import ./state { inherit root; }) ];
 
-  options.dots.home.core.enable = lib.mkEnableOption "Dots home core module" // {
-    default = true;
-  };
+  options = lib.setAttrByPath (root ++ [ "core" "enable" ]) (
+    lib.mkEnableOption "Dots home core module" // { default = true; }
+  );
 }
