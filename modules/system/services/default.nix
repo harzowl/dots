@@ -3,5 +3,6 @@
     ./access
     ./mail
     ./proxy
+    ./searxng
   ];
 }
