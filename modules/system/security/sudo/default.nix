@@ -2,10 +2,10 @@
 # and keeps it across sudo's environment reset. Value ported from nix-dotfiles.
 { config, lib, ... }:
 let
-  cfg = config.dots.system.sudo;
+  cfg = config.dots.system.security.sudo;
 in
 {
-  options.dots.system.sudo = {
+  options.dots.system.security.sudo = {
     enable = lib.mkEnableOption "sudo prompt customisation";
 
     prompt = lib.mkOption {
