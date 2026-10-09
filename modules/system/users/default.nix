@@ -53,6 +53,12 @@ in
             default = null;
             description = "Email address for the user.";
           };
+
+          passwordlessSudo = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Grant passwordless sudo (`NOPASSWD: ALL`); intended for admins (role = \"admin\").";
+          };
         };
       }
     );
@@ -87,6 +93,15 @@ in
 
     (lib.mkIf (lib.any (u: u.shell == "zsh") (lib.attrValues cfg)) {
       dots.system.programs.shell.zsh.enable = lib.mkDefault true;
+    })
+
+    (lib.mkIf (lib.any (u: u.passwordlessSudo) (lib.attrValues cfg)) {
+      security.sudo.extraRules = lib.mapAttrsToList
+        (name: _: {
+          users = [ name ];
+          commands = [ { command = "ALL"; options = [ "NOPASSWD" ]; } ];
+        })
+        (lib.filterAttrs (_: u: u.passwordlessSudo) cfg);
     })
   ];
 }
