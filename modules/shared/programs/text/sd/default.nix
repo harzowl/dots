@@ -1,15 +1,18 @@
 # sd, defined once. sd has no config file, so `settings` become default flags on
-# an `sd` wrapper that execs the real binary (see lib/mkCliFlags.nix).
+# an `sd` wrapper that execs the real binary (see lib/mkCliWrapper.nix).
 { target, root ? [ "dots" target ] }:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
-  mkCliFlags = import ../../../../../lib/mkCliFlags.nix;
+  mkCliWrapper = import ../../../../../lib/mkCliWrapper.nix;
 
   wrapper =
     args: cfg:
-    args.pkgs.writeShellScriptBin "sd" ''
-      exec ${cfg.package}/bin/sd ${mkCliFlags { inherit (args) lib; inherit (cfg) settings; }} "$@"
-    '';
+    mkCliWrapper {
+      inherit (args) lib pkgs;
+      name = "sd";
+      package = cfg.package;
+      inherit (cfg) settings;
+    };
 in
 mkSharedProgram {
   inherit target root;
@@ -32,7 +35,7 @@ mkSharedProgram {
       settings = lib.mkOption {
         type = lib.types.attrsOf lib.types.anything;
         default = { };
-        description = "Flags added to the `sd` command (see lib/mkCliFlags.nix).";
+        description = "Flags added to the `sd` command (see lib/mkCliWrapper.nix).";
       };
     };
 
