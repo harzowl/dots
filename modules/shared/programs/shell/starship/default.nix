@@ -37,6 +37,7 @@ let
       "[](fg:base08)"
       + "$os"
       + "$username"
+      + "$hostname"
       + "[](bg:base09 fg:base08)"
       + "$directory"
       + "[](bg:base0a fg:base09)"
@@ -87,6 +88,14 @@ let
         RedHatEnterprise = "󱄛";
         NixOS = "";
       };
+    };
+
+    hostname = {
+      # Only shown on remote (SSH) connections, so the prompt does not look
+      # identical on the local host.
+      ssh_only = true;
+      style = "bg:base08 fg:base01";
+      format = "[@$hostname]($style)";
     };
 
     username = {
