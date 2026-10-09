@@ -4,7 +4,7 @@
 { target, root ? [ "dots" target ] }:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
-  mkCliFlags = import ../../../../../lib/mkCliFlags.nix;
+  mkCliWrapper = import ../../../../../lib/mkCliWrapper.nix;
 
   # Named patches; each is toggled by its matching `patches.<name>` option.
   patchFiles = {
@@ -38,9 +38,12 @@ let
     let
       settings = args.lib.recursiveUpdate defaults cfg.settings;
     in
-    args.pkgs.writeShellScriptBin "duf" ''
-      exec ${mkPackage args cfg}/bin/duf ${mkCliFlags { inherit (args) lib; inherit settings; }} "$@"
-    '';
+    mkCliWrapper {
+      inherit (args) lib pkgs;
+      name = "duf";
+      package = mkPackage args cfg;
+      inherit settings;
+    };
 in
 mkSharedProgram {
   inherit target root;
