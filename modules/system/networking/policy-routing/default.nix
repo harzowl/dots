@@ -8,7 +8,8 @@
 #   ];
 #
 # Each rule installs an `ip rule` (match `from`) and a default route in its own
-# table pointing at `via`/`dev`.
+# table pointing at `via`/`dev`. Runs as a oneshot after `network-online.target`
+# so the gateway is reachable (a boot-time race would otherwise fail the route).
 let
   mkDotsModule = import ../../../../lib/mkDotsModule.nix;
 in
@@ -64,7 +65,7 @@ mkDotsModule {
   toConfig =
     args: cfg:
     let
-      inherit (args) lib;
+      inherit (args) lib pkgs;
       ruleCmds = lib.concatMapStrings (
         r:
         ''
@@ -73,7 +74,17 @@ mkDotsModule {
         ''
       ) cfg.rules;
     in
-    lib.mkIf (cfg.rules != [ ]) {
-      networking.localCommands = ruleCmds;
+    {
+      systemd.services.policy-routing = {
+        description = "Source-based policy routing";
+        wantedBy = [ "multi-user.target" ];
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = pkgs.writeShellScript "policy-routing" ruleCmds;
+        };
+      };
     };
 }

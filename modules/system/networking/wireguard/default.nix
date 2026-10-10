@@ -218,5 +218,13 @@ in
     };
 
     networking.firewall.allowedUDPPorts = lib.mkIf egressOn listenPorts;
+
+    # The mesh interface's `postSetup` adds a route to the server endpoint via the
+    # LAN gateway; wait for the LAN (`network-online`) so it can't race boot-time
+    # DHCP and fail with "Nexthop has invalid gateway".
+    systemd.services."wireguard-${mesh.interface}" = lib.mkIf participating {
+      wants = [ "network-online.target" ];
+      after = [ "network-online.target" ];
+    };
   };
 }
