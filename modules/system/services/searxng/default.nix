@@ -14,12 +14,6 @@ let
     image = "ghcr.io/privau/searxng:latest";
     # The image hardcodes 8080; publish it as 3080 (the port `edge` proxies to).
     ports = [ "3080:8080" ];
-    settings = {
-      # The fork disables them by default; turn the (patched) ones back on.
-      googleDefault = "1";
-      duckduckgoDefault = "1";
-      imageProxy = "1";
-    };
   };
 in
 mkDotsModule {
