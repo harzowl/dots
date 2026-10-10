@@ -1,6 +1,5 @@
 {
   imports = [
-    ./policy-routing
     ./wireguard
   ];
 }
