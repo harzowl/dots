@@ -66,11 +66,13 @@ mkDotsModule {
     args: cfg:
     let
       inherit (args) lib pkgs;
+      # systemd's PATH is minimal, so reference `ip` absolutely.
+      ip = "${pkgs.iproute2}/bin/ip";
       ruleCmds = lib.concatMapStrings (
         r:
         ''
-          ip rule add from ${r.from} lookup ${toString r.table} priority ${toString r.priority}
-          ip route replace default table ${toString r.table} ${lib.optionalString (r.dev != null) "dev ${r.dev} "}via ${r.via}
+          ${ip} rule add from ${r.from} lookup ${toString r.table} priority ${toString r.priority}
+          ${ip} route replace default table ${toString r.table} ${lib.optionalString (r.dev != null) "dev ${r.dev} "}via ${r.via}
         ''
       ) cfg.rules;
     in
