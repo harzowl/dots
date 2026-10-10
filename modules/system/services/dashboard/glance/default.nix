@@ -25,7 +25,7 @@ mkDotsModule {
       search = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
-        description = "Search URL template (`{QUERY}` is substituted); defaults to DuckDuckGo.";
+        description = "`search-engine`: a built-in name or a URL with `{QUERY}`.";
       };
 
       pages = lib.mkOption {
@@ -81,7 +81,7 @@ mkDotsModule {
               size = "full";
               widgets = lib.optional (cfg.search != null) {
                 type = "search";
-                "url-template" = cfg.search;
+                "search-engine" = cfg.search;
               } ++ [
                 {
                   type = "monitor";
