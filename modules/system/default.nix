@@ -3,6 +3,7 @@
     ./core
     ./host-type
     ./lxc
+    ./networking
     ./nix
     ./security
     ./secretspec
