@@ -1,5 +1,11 @@
 let
   mkDotsModule = import ../../../../lib/mkDotsModule.nix;
+
+  # Patches shipped with this module, keyed by the name used under `patches`.
+  # Enable one with `dots.system.services.searxng.patches.<name>.enable = true;`.
+  patchFiles = {
+    google = ./patches/google.patch;
+  };
 in
 mkDotsModule {
   optionPath = [
@@ -10,12 +16,35 @@ mkDotsModule {
   description = "SearXNG meta search engine";
 
   options =
-    { lib, pkgs, ... }:
+    { config, lib, pkgs, ... }:
+    let
+      # Default to the nixpkgs-unstable build: the current (curl_cffi) SearXNG
+      # engine, which is also what the `google` patch targets.
+      unstable = config._module.args.nixpkgsUnstable or null;
+    in
     {
       package = lib.mkOption {
         type = lib.types.package;
-        default = pkgs.searxng;
+        default =
+          if unstable != null then
+            unstable.legacyPackages.${pkgs.stdenv.hostPlatform.system}.searxng
+          else
+            pkgs.searxng;
         description = "The SearXNG package to use.";
+      };
+
+      patches = lib.mkOption {
+        type = lib.types.attrsOf (
+          lib.types.submodule {
+            options.enable = lib.mkEnableOption "this SearXNG source patch";
+          }
+        );
+        default = { };
+        description = ''
+          SearXNG source patches shipped by dots, enabled by name
+          (`patches.<name>.enable`). Known patches:
+          ${lib.concatStringsSep ", " (lib.attrNames patchFiles)}.
+        '';
       };
 
       settings = lib.mkOption {
@@ -64,12 +93,26 @@ mkDotsModule {
     };
 
   toConfig =
-    _: cfg:
+    { lib, ... }:
+    cfg:
     {
+      assertions = [
+        {
+          assertion = lib.all (name: patchFiles ? ${name}) (lib.attrNames cfg.patches);
+          message = "dots.system.services.searxng.patches: unknown patch (known: ${lib.concatStringsSep ", " (lib.attrNames patchFiles)}).";
+        }
+      ];
+
       services.searx = {
         enable = true;
+        package = cfg.package.overrideAttrs (old: {
+          patches =
+            (old.patches or [ ])
+            ++ lib.mapAttrsToList (name: _: patchFiles.${name}) (
+              lib.filterAttrs (name: p: p.enable && patchFiles ? ${name}) cfg.patches
+            );
+        });
         inherit (cfg)
-          package
           settings
           environmentFile
           redisCreateLocally
