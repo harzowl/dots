@@ -22,17 +22,13 @@
   config,
   lib,
   pkgs,
-  nixpkgsUnstable ? null,
+  pkgsUnstable,
   ...
 }:
 let
   cfg = config.dots.system.secretspec;
 
-  secretspec =
-    if nixpkgsUnstable != null then
-      nixpkgsUnstable.legacyPackages.${pkgs.stdenv.hostPlatform.system}.secretspec
-    else
-      pkgs.secretspec;
+  secretspec = pkgsUnstable.secretspec;
 
   providerArg = lib.optionalString (cfg.provider != null) " --provider ${lib.escapeShellArg cfg.provider}";
   scopeArg = lib.optionalString (cfg.scope != null) " --scope ${lib.escapeShellArg cfg.scope}";

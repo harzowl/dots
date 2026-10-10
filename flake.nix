@@ -4,10 +4,6 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
-    # Current secretspec (>= 0.17 for the sops/age/systemd-credential providers);
-    # the pinned 26.05 nixpkgs still ships 0.10.x.
-    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-
     home-manager = {
       url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -20,9 +16,6 @@
       # NixOS module library: options under dots.system.*
       nixosModules.default = {
         imports = [ (import ./modules/system) ];
-        # Expose nixpkgs-unstable to the module tree so `dots.system.secretspec`
-        # can default to a current secretspec build.
-        _module.args.nixpkgsUnstable = inputs."nixpkgs-unstable";
       };
 
       # NixOS Home Manager integration: options under dots.home.users.*
