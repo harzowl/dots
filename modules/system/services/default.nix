@@ -1,6 +1,7 @@
 {
   imports = [
     ./access
+    ./dashboard
     ./mail
     ./minecraft
     ./mozhi
