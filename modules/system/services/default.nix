@@ -4,6 +4,7 @@
     ./mail
     ./minecraft
     ./mozhi
+    ./passwords
     ./proxy
     ./searxng
   ];
