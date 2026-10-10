@@ -15,6 +15,9 @@
   dots.system = {
     core.enable = lib.mkDefault true;
 
+    # Compressed in-memory swap as an OOM cushion (a host can size or disable it).
+    memory.zram.enable = lib.mkDefault true;
+
     security.sudo.enable = lib.mkDefault true;
     services.access.openssh.enable = lib.mkDefault true;
 

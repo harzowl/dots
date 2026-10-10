@@ -3,6 +3,7 @@
     ./core
     ./host-type
     ./lxc
+    ./memory
     ./networking
     ./nix
     ./security
