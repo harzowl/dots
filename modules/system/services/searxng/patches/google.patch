@@ -1,5 +1,5 @@
---- a/searx/engines/google.py	2026-10-10 13:39:18.439848812 +0200
-+++ b/searx/engines/google.py	2026-10-10 13:39:18.440933443 +0200
+--- a/searx/engines/google.py	2026-10-10 14:00:04.785371993 +0200
++++ b/searx/engines/google.py	2026-10-10 14:00:04.786435374 +0200
 @@ -9,21 +9,20 @@
  - :ref:`google scholar engine`
  - :ref:`google autocomplete`
@@ -87,7 +87,7 @@
          "sca_esv": "1",
          **google_info["params"],
          **(extra_args or {}),
-@@ -325,9 +317,10 @@
+@@ -325,9 +317,11 @@
      if use_safesearch and params["safesearch"]:
          args["safe"] = (safesearch_map or filter_mapping)[params["safesearch"]]
  
@@ -96,12 +96,13 @@
 -    params["impersonate"] = "chrome99_android"
 +    params["url"] = f"https://www.google.com/search?{urlencode(args)}"
 +    params["headers"]["User-Agent"] = user_agent
++    params["cookies"] = google_info["cookies"]
 +    params["impersonate"] = "none"
 +    params["curl_options"] = {CurlOpt.SSL_SESSIONID_CACHE: 0}
  
  
  def request(query: str, params: "OnlineParams") -> None:
-@@ -339,19 +332,22 @@
+@@ -339,19 +333,22 @@
      dom = wml_dom(resp)
  
      # parse results
@@ -129,7 +130,7 @@
              if raw_url is None:
                  logger.debug(
                      'ignoring item from the result_xpath list: missing url of title "%s"',
-@@ -360,10 +356,10 @@
+@@ -360,10 +357,10 @@
                  continue
  
              url = unwrap_google_url(raw_url)
