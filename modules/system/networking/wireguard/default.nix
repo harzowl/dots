@@ -182,6 +182,13 @@ in
         default = { };
         description = "Mesh members keyed by name; this host is `config.dots.system.core.hostname`.";
       };
+
+      memberIps = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        readOnly = true;
+        default = ips;
+        description = "Derived tunnel IPs, by member name (e.g. for Caddy routes).";
+      };
     };
   };
 
