@@ -37,6 +37,11 @@ mkDotsModule {
                     options = {
                       title = lib.mkOption { type = lib.types.str; };
                       url = lib.mkOption { type = lib.types.str; };
+                      icon = lib.mkOption {
+                        type = lib.types.nullOr lib.types.str;
+                        default = null;
+                        description = "Glance icon (`si:name`, `di:name`, `mdi:name`, or a URL).";
+                      };
                       category = lib.mkOption {
                         type = lib.types.str;
                         default = "Services";
@@ -60,22 +65,50 @@ mkDotsModule {
       lib = args.lib;
       pkgs = args.pkgs;
 
-      link = s: "                  - title: ${s.title}\n                    url: ${s.url}\n";
+      link =
+        s:
+        { inherit (s) title url; }
+        // lib.optionalAttrs (s.icon != null) { inherit (s) icon; };
+
       group =
         p: cat:
-        "              - name: ${cat}\n                links:\n"
-        + lib.concatMapStrings link (lib.filter (s: s.category == cat) p.services);
+        {
+          name = cat;
+          links = map link (lib.filter (s: s.category == cat) p.services);
+        };
+
+      # A predefined layout per page: a search bar, live service status tiles,
+      # and category-grouped bookmarks.
       page =
         p:
-        "  - name: ${p.name}\n"
-        + "    columns:\n"
-        + "      - size: full\n"
-        + "        widgets:\n"
-        + "          - type: bookmarks\n"
-        + "            groups:\n"
-        + lib.concatMapStrings (group p) (lib.unique (map (s: s.category) p.services));
+        {
+          name = p.name;
+          columns = [
+            {
+              size = "full";
+              widgets = [
+                {
+                  type = "search";
+                  "search-engine" = "duckduckgo";
+                }
+                {
+                  type = "monitor";
+                  title = "Services";
+                  cache = "1m";
+                  sites = map link p.services;
+                }
+                {
+                  type = "bookmarks";
+                  groups = map (group p) (lib.unique (map (s: s.category) p.services));
+                }
+              ];
+            }
+          ];
+        };
 
-      config = pkgs.writeText "glance.yml" ("pages:\n" + lib.concatMapStrings page cfg.pages);
+      config = (pkgs.formats.yaml { }).generate "glance.yml" {
+        pages = map page cfg.pages;
+      };
     in
     (mkDockerService.config {
       spec = cfg // {
