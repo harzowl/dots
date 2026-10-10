@@ -37,14 +37,50 @@ mkDotsModule {
         default = { };
         description = "Secret files exposed to the service as systemd credentials, forwarded to `services.stalwart.credentials`.";
       };
+
+      trustedProxies = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = ''
+          CIDRs allowed to send the PROXY protocol (e.g. the WireGuard mesh a
+          front gateway forwards from). Enables the PROXY protocol on every
+          non-HTTP listener, so the real client IP survives for SPF/DMARC and
+          rate limiting. Leave empty when there is no front proxy.
+        '';
+      };
     };
 
   toConfig =
-    _: cfg:
+    args: cfg:
+    let
+      inherit (args) lib;
+      applyProxy =
+        l:
+        if (l.protocol or "smtp") == "http" then
+          l
+        else
+          l // {
+            proxy = {
+              override = true;
+              trusted-networks = cfg.trustedProxies;
+            };
+          };
+      settings =
+        if cfg.trustedProxies == [ ] then
+          cfg.settings
+        else
+          cfg.settings
+          // {
+            server = (cfg.settings.server or { }) // {
+              listener = lib.mapAttrs (_: applyProxy) (cfg.settings.server.listener or { });
+            };
+          };
+    in
     {
       services.stalwart = {
         enable = true;
-        inherit (cfg) stateVersion openFirewall settings credentials;
+        inherit (cfg) stateVersion openFirewall credentials;
+        settings = settings;
       };
     };
 }
