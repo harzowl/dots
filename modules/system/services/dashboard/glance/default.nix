@@ -1,0 +1,86 @@
+# Glance — a lightweight self-hosted dashboard. The container reads a single
+# `glance.yml`; here it is generated from a list of public services (grouped by
+# category), so the dashboard is a view of the fleet rather than a hand-kept
+# list. Services that should stay private simply aren't passed in.
+let
+  mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
+  mkDockerService = import ../../../../../lib/mkDockerService.nix;
+
+  defaults = {
+    name = "glance";
+    image = "glanceapp/glance:latest";
+    ports = [ "8082:8080" ];
+    volumes = [ "/var/lib/glance:/app/data" ];
+  };
+in
+mkDotsModule {
+  optionPath = [
+    "system"
+    "services"
+    "dashboard"
+    "glance"
+  ];
+  description = "Glance dashboard (OCI container)";
+
+  options =
+    { lib, ... }:
+    (mkDockerService.options { inherit lib defaults; })
+    // {
+      pages = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              name = lib.mkOption { type = lib.types.str; };
+              services = lib.mkOption {
+                type = lib.types.listOf (
+                  lib.types.submodule {
+                    options = {
+                      title = lib.mkOption { type = lib.types.str; };
+                      url = lib.mkOption { type = lib.types.str; };
+                      category = lib.mkOption {
+                        type = lib.types.str;
+                        default = "Services";
+                      };
+                    };
+                  }
+                );
+                default = [ ];
+              };
+            };
+          }
+        );
+        default = [ ];
+        description = "Dashboard pages; each lists services grouped by category.";
+      };
+    };
+
+  toConfig =
+    args: cfg:
+    let
+      lib = args.lib;
+      pkgs = args.pkgs;
+
+      link = s: "                  - title: ${s.title}\n                    url: ${s.url}\n";
+      group =
+        p: cat:
+        "              - name: ${cat}\n                links:\n"
+        + lib.concatMapStrings link (lib.filter (s: s.category == cat) p.services);
+      page =
+        p:
+        "  - name: ${p.name}\n"
+        + "    columns:\n"
+        + "      - size: full\n"
+        + "        widgets:\n"
+        + "          - type: bookmarks\n"
+        + "            groups:\n"
+        + lib.concatMapStrings (group p) (lib.unique (map (s: s.category) p.services));
+
+      config = pkgs.writeText "glance.yml" ("pages:\n" + lib.concatMapStrings page cfg.pages);
+    in
+    (mkDockerService.config {
+      spec = cfg // {
+        volumes = cfg.volumes ++ [ "${config}:/app/config/glance.yml:ro" ];
+      };
+      inherit defaults;
+    }) args;
+}
