@@ -1,7 +1,3 @@
-# Glance — a lightweight self-hosted dashboard. The container reads a single
-# `glance.yml`; here it is generated from a list of public services (grouped by
-# category), so the dashboard is a view of the fleet rather than a hand-kept
-# list. Services that should stay private simply aren't passed in.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
@@ -83,8 +79,6 @@ mkDotsModule {
           links = map link (lib.filter (s: s.category == cat) p.services);
         };
 
-      # A predefined layout per page: a search bar, live service status tiles,
-      # and category-grouped bookmarks.
       page =
         p:
         {
