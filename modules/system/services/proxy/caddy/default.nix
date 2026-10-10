@@ -46,6 +46,12 @@ mkDotsModule {
               extraConfig = lib.mkOption {
                 type = lib.types.lines;
                 default = "";
+                description = "Extra directives in the site block (security headers, CSP, caching, …).";
+              };
+              proxyConfig = lib.mkOption {
+                type = lib.types.lines;
+                default = "";
+                description = "Extra directives inside the generated `reverse_proxy` block.";
               };
             };
           }
@@ -83,9 +89,18 @@ mkDotsModule {
       routes = lib.mapAttrs' (
         name: r:
         lib.nameValuePair (if r.domain != null then r.domain else "${name}.${domain}") {
-          extraConfig =
-            "reverse_proxy ${r.scheme}://${resolve r.host}:${toString r.port}"
-            + lib.optionalString (r.extraConfig != "") "\n${r.extraConfig}";
+          extraConfig = lib.concatStringsSep "\n" (
+            lib.optional (r.extraConfig != "") r.extraConfig
+            ++ [
+              "encode zstd gzip"
+              "reverse_proxy ${r.scheme}://${resolve r.host}:${toString r.port} {"
+              # SearXNG (and most apps) read the client IP from X-Real-IP; Caddy
+              # sets X-Forwarded-For but not this one.
+              "	header_up X-Real-IP {http.request.remote.host}"
+            ]
+            ++ lib.optional (r.proxyConfig != "") r.proxyConfig
+            ++ [ "}" ]
+          );
         }
       ) cfg.routes;
     in
