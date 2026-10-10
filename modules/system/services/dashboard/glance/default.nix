@@ -72,13 +72,6 @@ mkDotsModule {
         { inherit (s) title url; }
         // lib.optionalAttrs (s.icon != null) { inherit (s) icon; };
 
-      group =
-        p: cat:
-        {
-          name = cat;
-          links = map link (lib.filter (s: s.category == cat) p.services);
-        };
-
       page =
         p:
         {
@@ -95,10 +88,6 @@ mkDotsModule {
                   title = "Services";
                   cache = "1m";
                   sites = map link p.services;
-                }
-                {
-                  type = "bookmarks";
-                  groups = map (group p) (lib.unique (map (s: s.category) p.services));
                 }
               ];
             }
