@@ -34,8 +34,10 @@ let
     name = "mc-router";
     image = "itzg/mc-router:latest";
     ports = [ 25565 ];
-    # `routes` (-> `ROUTES`) is a comma-separated `server-address=backend:port`
-    # list, e.g. "mc.example.com=10.10.0.4:25565,203.0.113.10=10.10.0.4:25565".
+    # `mapping` (-> `MAPPING`) is a comma/newline-delimited
+    # `externalHostname=host:port` list, e.g.
+    # "mc.example.com=10.10.0.4:25565,203.0.113.10=10.10.0.4:25565".
+    # No `default` -> an unmatched server address is dropped.
   };
 in
 mkDotsModule {
