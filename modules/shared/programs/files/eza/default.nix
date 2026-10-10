@@ -42,8 +42,30 @@ mkSharedProgram {
 
       extraOptions = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ ];
-        description = "Extra eza flags (forwarded to `programs.eza.extraOptions` on the home target).";
+        default = [
+          "--group-directories-first"
+          "--header"
+          "--git"
+          "--git-ignore"
+          "--color-scale-mode=gradient"
+          "--smart-group"
+          "--hyperlink"
+        ];
+        description = ''
+          eza flags (forwarded to `programs.eza.extraOptions` on the home target).
+          The defaults are the sensible set: directories first, column header,
+          per-entry git status that honours `.gitignore`, a colour ramp for
+          size/age, group column hidden when it's just you, and clickable names.
+        '';
+      };
+
+      theme = lib.mkOption {
+        type = lib.types.attrsOf lib.types.anything;
+        default = { };
+        description = ''
+          eza theme (forwarded to `programs.eza.theme`), e.g.
+          `theme.filenames.Desktop.icon.glyph = "…";` or `theme.filekinds…`.
+        '';
       };
 
       aliasLs = lib.mkOption {
@@ -65,7 +87,7 @@ mkSharedProgram {
       {
         programs.eza = {
           enable = true;
-          inherit (cfg) package icons extraOptions;
+          inherit (cfg) package icons extraOptions theme;
         };
       }
       (args.lib.mkIf cfg.aliasLs (mkShellAlias { aliases = { ls = "eza"; }; } args))
