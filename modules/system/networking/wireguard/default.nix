@@ -84,7 +84,15 @@ let
             persistentKeepalive = 25;
           }
         ];
-    postSetup = lib.optionalString (!isServer && mesh.routeAll) "ip route replace ${server.address}/32 via ${lanGateway}";
+    # Keep the server endpoint off the tunnel. Retried briefly because at boot
+    # the LAN gateway may not exist yet — a plain `ip route replace` then fails
+    # with "Nexthop has invalid gateway".
+    postSetup = lib.optionalString (!isServer && mesh.routeAll) ''
+      for _ in $(seq 1 15); do
+        ip route replace ${server.address}/32 via ${lanGateway} && break
+        sleep 1
+      done
+    '';
   };
 
   interfaces = cfg.interfaces // lib.optionalAttrs participating { ${mesh.interface} = meshInterface; };
