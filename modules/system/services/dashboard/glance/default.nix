@@ -92,16 +92,10 @@ mkDotsModule {
           columns = [
             {
               size = "full";
-              widgets = [
-                (
-                  { type = "search"; }
-                  // (
-                    if cfg.search != null then
-                      { "url-template" = cfg.search; }
-                    else
-                      { "search-engine" = "duckduckgo"; }
-                  )
-                )
+              widgets = lib.optional (cfg.search != null) {
+                type = "search";
+                "url-template" = cfg.search;
+              } ++ [
                 {
                   type = "monitor";
                   title = "Services";
