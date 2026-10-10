@@ -26,6 +26,12 @@ mkDotsModule {
     { lib, ... }:
     (mkDockerService.options { inherit lib defaults; })
     // {
+      search = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Search URL template (`{QUERY}` is substituted); defaults to DuckDuckGo.";
+      };
+
       pages = lib.mkOption {
         type = lib.types.listOf (
           lib.types.submodule {
@@ -87,10 +93,15 @@ mkDotsModule {
             {
               size = "full";
               widgets = [
-                {
-                  type = "search";
-                  "search-engine" = "duckduckgo";
-                }
+                (
+                  { type = "search"; }
+                  // (
+                    if cfg.search != null then
+                      { "url-template" = cfg.search; }
+                    else
+                      { "search-engine" = "duckduckgo"; }
+                  )
+                )
                 {
                   type = "monitor";
                   title = "Services";
