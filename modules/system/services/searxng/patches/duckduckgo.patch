@@ -1,0 +1,201 @@
+--- a/searx/engines/duckduckgo.py	2026-10-10 14:04:57.774786081 +0200
++++ b/searx/engines/duckduckgo.py	2026-10-10 14:04:57.775916953 +0200
+@@ -179,10 +179,13 @@
+ from searx.exceptions import SearxEngineCaptchaException
+ from searx.external_bang import EXTERNAL_BANGS, get_node  # type: ignore
+ from searx.result_types import EngineResults
++from urllib.parse import unquote, urlencode
++
+ from searx.utils import (
+     ElementType,
+     eval_xpath,
+     eval_xpath_getindex,
++    eval_xpath_list,
+     extr,
+     extract_text,
+     gen_useragent,
+@@ -207,7 +210,7 @@
+ safesearch: bool = True
+ """DDG-lite: user can't select but the results are filtered."""
+ 
+-ddg_url: str = "https://html.duckduckgo.com/html/"
++ddg_url: str = "https://lite.duckduckgo.com/lite/"
+ """The process flow for determining the ``vqd`` values was implemented for the
+ no-JS variant (DDG-html)"""
+ 
+@@ -367,94 +370,28 @@
+         return
+ 
+     query = quote_ddg_bangs(query)
+-    eng_region: str = traits.get_region(
+-        params["searxng_locale"],
+-        traits.all_locale,
+-    )  # pyright: ignore[reportAssignmentType]
+-
+-    # HTTP headers
+-    # ============
+-
+     headers = params["headers"]
+-
+-    # The vqd value is generated from the query and the UA header. To be able to
+-    # reuse the vqd value, the UA header must be static.
+     headers["User-Agent"] = _HTTP_User_Agent
+-
+-    headers["Sec-Fetch-Dest"] = "document"
+-    headers["Sec-Fetch-Mode"] = "navigate"
+-    headers["Sec-Fetch-Site"] = "same-origin"
+-    headers["Sec-Fetch-User"] = "?1"
+-
+-    headers["Referer"] = "https://html.duckduckgo.com/"
++    headers["Referer"] = ddg_url
+ 
+     ui_lang = params["searxng_locale"]
+     if not headers.get("Accept-Language"):
+         headers["Accept-Language"] = f"{ui_lang},{ui_lang}-{ui_lang.upper()};q=0.7"
+ 
+-    # DDG search form (POST data)
+-    # ===========================
+-
+-    # form_data: dict[str,str] = {"v": "l", "api": "d.js", "o": "json"}
+-    # """The WEB-API "endpoint" is ``api``."""
+-
+-    data = params["data"]
+-    data["q"] = query
+-    params["url"] = ddg_url
+-    params["method"] = "POST"
+-
+-    if params["pageno"] == 1:
+-        data["b"] = ""
+-    else:
+-        # vqd is required to request other pages after the first one
+-        vqd = get_vqd(query=query, params=params)
+-        if vqd:
+-            data["vqd"] = vqd
+-        else:
+-            # Don"t try to call follow up pages without a vqd value.
+-            # DDG recognizes this as a request from a bot. This lowers the
+-            # reputation of the SearXNG IP and DDG starts to activate CAPTCHAs.
+-            # set suspend time to zero is OK --> ddg does not block the IP
+-            raise SearxEngineCaptchaException(
+-                suspended_time=0,
+-                message=f"VQD missed (page: {params['pageno']}, locale: {params['searxng_locale']})",
+-            )
+-
+-        if params["searxng_locale"].startswith("zh"):
+-            # Some locales (at least China) do not have a "next page" button and DDG
+-            # will return a HTTP/2 403 Forbidden for a request of such a page.
+-            params["url"] = None
+-            return
+-
+-        data["nextParams"] = ""
+-        data["api"] = "d.js"
+-        data["o"] = "json"
+-        data["v"] = "l"
+-
+-        offset = 10 + (params["pageno"] - 2) * 15  # Page 2 = 10, Page 2+n = 10 + n*15
+-        data["dc"] = offset + 1
+-        data["s"] = offset
+-
+-    if eng_region == "wt-wt":
+-        # Put empty kl in form data if language/region set to all
+-        # data["kl"] = ""
+-        data["kl"] = "wt-wt"
+-    else:
+-        data["kl"] = eng_region
+-        params["cookies"]["kl"] = eng_region
++    args = {"q": query}
++    if params["pageno"] > 1:
++        args["s"] = (params["pageno"] - 1) * 20
++
++    eng_region = traits.get_region(params["searxng_locale"], traits.all_locale)
++    if eng_region and eng_region != "wt-wt":
++        args["kl"] = eng_region
+ 
+-    t_range: str = time_range_dict.get(str(params["time_range"]), "")
++    t_range = time_range_dict.get(str(params["time_range"]), "")
+     if t_range:
+-        data["df"] = t_range
+-        params["cookies"]["df"] = t_range
+-
+-    params["headers"]["Content-Type"] = "application/x-www-form-urlencoded"
+-    params["headers"]["Referer"] = ddg_url
+-
+-    logger.debug("param headers: %s", params["headers"])
+-    logger.debug("param data: %s", params["data"])
+-    logger.debug("param cookies: %s", params["cookies"])
++        args["df"] = t_range
+ 
++    params["url"] = f"{ddg_url}?{urlencode(args)}"
++    params["method"] = "GET"
+ 
+ def is_ddg_captcha(dom: ElementType):
+     """In case of CAPTCHA ddg response its own *not a Robot* dialog and is not
+@@ -470,55 +407,31 @@
+         return res
+ 
+     doc = resp.html()
+-    params = resp.search_params
+ 
+     if is_ddg_captcha(doc):
+         # set suspend time to zero is OK --> ddg does not block the IP
+-        raise SearxEngineCaptchaException(suspended_time=0, message=f"CAPTCHA ({params['data'].get('kl')})")
++        raise SearxEngineCaptchaException(suspended_time=0, message="CAPTCHA")
+ 
+-    form = eval_xpath(doc, '//input[@name="vqd"]/..')
++    # DDG-lite results: an ``a.result-link`` followed by a ``td.result-snippet``
++    for a in eval_xpath_list(doc, '//a[contains(@class, "result-link")]'):
+ 
+-    # Some locales (at least China) do not have a "next page" button and DDG
+-    # will return a HTTP/2 403 Forbidden for a request of such a page.
+-    if len(form):
+-        form = form[0]
+-        form_vqd = eval_xpath(form, '//input[@name="vqd"]/@value')[0]
+-        q: str = str(params["data"]["q"])
+-        set_vqd(
+-            query=q,
+-            value=str(form_vqd),
+-            params=resp.search_params,
+-        )
++        href = eval_xpath_getindex(a, "./@href", 0, default="")
++        url = href
++        if "uddg=" in href:
++            url = unquote(href.split("uddg=", 1)[1].split("&", 1)[0])
+ 
+-    # just select "web-result" and ignore results of class "result--ad result--ad--small"
+-    for div_result in eval_xpath(doc, '//div[@id="links"]/div[contains(@class, "web-result")]'):
+-        _title = eval_xpath(div_result, ".//h2/a")
+-        _content = eval_xpath_getindex(div_result, './/a[contains(@class, "result__snippet")]', 0, [])
+-        res.add(
+-            res.types.MainResult(
+-                title=extract_text(_title) or "",
+-                url=eval_xpath(div_result, ".//h2/a/@href")[0],
+-                content=extract_text(_content) or "",
+-            )
++        snippet = eval_xpath_getindex(
++            a, 'following::td[contains(@class, "result-snippet")][1]', 0, default=None
+         )
+-
+-    zero_click_info_xpath = '//div[@id="zero_click_abstract"]'
+-    zero_click = extract_text(eval_xpath(doc, zero_click_info_xpath)).strip()  # type: ignore
+-
+-    if zero_click and (
+-        "Your IP address is" not in zero_click
+-        and "Your user agent:" not in zero_click
+-        and "URL Decoded:" not in zero_click
+-    ):
+         res.add(
+-            res.types.Answer(
+-                answer=zero_click,
+-                url=eval_xpath_getindex(doc, '//div[@id="zero_click_abstract"]/a/@href', 0),
++            res.types.MainResult(
++                title=extract_text(a) or "",
++                url=url,
++                content=extract_text(snippet) or "",
+             )
+         )
+     return res
+ 
+-
+ def fetch_traits(engine_traits: EngineTraits):
+     """Fetch languages & regions from DuckDuckGo.
+ 
