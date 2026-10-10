@@ -4,6 +4,7 @@ let
   # Patches shipped with this module, keyed by the name used under `patches`.
   # Enable one with `dots.system.services.searxng.patches.<name>.enable = true;`.
   patchFiles = {
+    duckduckgo = ./patches/duckduckgo.patch;
     google = ./patches/google.patch;
   };
 in
