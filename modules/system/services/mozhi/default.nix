@@ -12,6 +12,7 @@ mkDotsModule {
   optionPath = [
     "system"
     "services"
+    "translate"
     "mozhi"
   ];
   description = "Mozhi translation frontend (OCI container)";

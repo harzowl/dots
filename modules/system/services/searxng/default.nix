@@ -20,6 +20,7 @@ mkDotsModule {
   optionPath = [
     "system"
     "services"
+    "search"
     "searxng"
   ];
   description = "SearXNG (priv.au fork) as an OCI container";
