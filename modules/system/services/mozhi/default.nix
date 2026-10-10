@@ -1,6 +1,6 @@
 let
   mkDotsModule = import ../../../../lib/mkDotsModule.nix;
-  mkDockerContainer = import ../../../../lib/mkDockerContainer.nix;
+  mkDockerService = import ../../../../lib/mkDockerService.nix;
 in
 mkDotsModule {
   optionPath = [
@@ -14,19 +14,19 @@ mkDotsModule {
     { lib, ... }:
     {
       container = lib.mkOption {
-        type = lib.types.submodule mkDockerContainer.options;
+        type = lib.types.submodule mkDockerService.options;
         default = {
           name = "mozhi";
           image = "codeberg.org/aryak/mozhi:latest";
           ports = [ 3000 ];
         };
         description = ''
-          The container spec (see dots' `mkDockerContainer`); `name` and `image`
+          The container spec (see dots' `mkDockerService`); `name` and `image`
           default to Mozhi, and anything else can be overridden — e.g.
-          `container.environment = { MOZHI_DEFAULT_ENGINE = "google"; };`.
+          `container.settings.mozhiDefaultEngine = "google";`.
         '';
       };
     };
 
-  toConfig = args: cfg: mkDockerContainer.config cfg.container args;
+  toConfig = args: cfg: mkDockerService.config cfg.container args;
 }
