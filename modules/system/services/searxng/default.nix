@@ -12,7 +12,8 @@ let
   defaults = {
     name = "searxng";
     image = "ghcr.io/privau/searxng:latest";
-    ports = [ 8080 ];
+    # The image hardcodes 8080; publish it as 3080 (the port `edge` proxies to).
+    ports = [ "3080:8080" ];
     settings = {
       # The fork disables them by default; turn the (patched) ones back on.
       googleDefault = "1";
