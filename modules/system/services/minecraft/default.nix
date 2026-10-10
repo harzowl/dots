@@ -32,6 +32,8 @@ mkDotsModule {
             memory = "4G";
             onlineMode = true;
             maxPlayers = 10;
+            # Only whitelisted players may join (the `whitelist` setting below).
+            enforceWhitelist = true;
           };
         };
         description = ''
