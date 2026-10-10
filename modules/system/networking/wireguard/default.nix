@@ -78,10 +78,9 @@ let
           {
             publicKey = server.publicKey;
             endpoint = "${server.address}:${toString mesh.port}";
-            allowedIPs = lib.optionals mesh.routeAll [
-              "0.0.0.0/0"
-              "::/0"
-            ];
+            allowedIPs =
+              lib.optional mesh.routeAll "0.0.0.0/0"
+              ++ lib.optional (mesh.routeAll && mesh.ipv6) "::/0";
             persistentKeepalive = 25;
           }
         ];
@@ -148,7 +147,13 @@ in
       routeAll = lib.mkOption {
         type = lib.types.bool;
         default = true;
-        description = "Clients route 0.0.0.0/0 + ::/0 through the server (the LAN and the server endpoint stay off the tunnel).";
+        description = "Clients route 0.0.0.0/0 through the server (the LAN and the server endpoint stay off the tunnel).";
+      };
+
+      ipv6 = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Clients also route `::/0` (needs IPv6 forwarding + NAT on the server).";
       };
 
       gateway = lib.mkOption {
