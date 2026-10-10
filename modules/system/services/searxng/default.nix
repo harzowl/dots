@@ -16,15 +16,11 @@ mkDotsModule {
   description = "SearXNG meta search engine";
 
   options =
-    { config, lib, pkgs, ... }:
-    let
-      # nixpkgs-unstable: the current (curl_cffi) SearXNG engine.
-      unstable = config._module.args.nixpkgsUnstable;
-    in
+    { lib, pkgsUnstable, ... }:
     {
       package = lib.mkOption {
         type = lib.types.package;
-        default = unstable.legacyPackages.${pkgs.stdenv.hostPlatform.system}.searxng;
+        default = pkgsUnstable.searxng;
         description = "The SearXNG package to use.";
       };
 
