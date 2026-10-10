@@ -31,9 +31,13 @@ mkSharedProgram {
       };
 
       icons = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Show icons (forwarded to `programs.eza.icons` on the home target).";
+        type = lib.types.enum [
+          "auto"
+          "always"
+          "never"
+        ];
+        default = "auto";
+        description = "When to show icons (forwarded to `programs.eza.icons` on the home target).";
       };
 
       extraOptions = lib.mkOption {
