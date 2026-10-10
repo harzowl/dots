@@ -18,18 +18,13 @@ mkDotsModule {
   options =
     { config, lib, pkgs, ... }:
     let
-      # Default to the nixpkgs-unstable build: the current (curl_cffi) SearXNG
-      # engine, which is also what the `google` patch targets.
-      unstable = config._module.args.nixpkgsUnstable or null;
+      # nixpkgs-unstable: the current (curl_cffi) SearXNG engine.
+      unstable = config._module.args.nixpkgsUnstable;
     in
     {
       package = lib.mkOption {
         type = lib.types.package;
-        default =
-          if unstable != null then
-            unstable.legacyPackages.${pkgs.stdenv.hostPlatform.system}.searxng
-          else
-            pkgs.searxng;
+        default = unstable.legacyPackages.${pkgs.stdenv.hostPlatform.system}.searxng;
         description = "The SearXNG package to use.";
       };
 
