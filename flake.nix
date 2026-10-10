@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     home-manager = {
       url = "github:nix-community/home-manager/release-26.05";
@@ -14,9 +15,16 @@
     { self, home-manager, ... }@inputs:
     {
       # NixOS module library: options under dots.system.*
-      nixosModules.default = {
-        imports = [ (import ./modules/system) ];
-      };
+      nixosModules.default =
+        { pkgs, ... }:
+        {
+          imports = [ (import ./modules/system) ];
+          # nixpkgs-unstable for the current packages the modules default to
+          # (secretspec, searxng); the consumer supplies nothing.
+          _module.args.pkgsUnstable = import inputs."nixpkgs-unstable" {
+            system = pkgs.stdenv.hostPlatform.system;
+          };
+        };
 
       # NixOS Home Manager integration: options under dots.home.users.*
       nixosModules.home = {

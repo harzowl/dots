@@ -17,13 +17,17 @@
 { config, lib, pkgs, modulesPath, ... }@args:
 let
   cfg = lib.getAttrFromPath ([ "dots" ] ++ optionPath) config;
+  # `_module.args.pkgsUnstable` (nixpkgs-unstable, exposed by the dots modules)
+  # isn't part of this wrapper's function arguments, so surface it for
+  # `options`/`toConfig`.
+  args' = args // { pkgsUnstable = config._module.args.pkgsUnstable or null; };
 in
 {
-  imports = if lib.isFunction imports then imports args else imports;
+  imports = if lib.isFunction imports then imports args' else imports;
 
   options = lib.setAttrByPath ([ "dots" ] ++ optionPath) (
-    { enable = lib.mkEnableOption description; } // options args
+    { enable = lib.mkEnableOption description; } // options args'
   );
 
-  config = lib.mkIf (when cfg) (toConfig args cfg);
+  config = lib.mkIf (when cfg) (toConfig args' cfg);
 }
