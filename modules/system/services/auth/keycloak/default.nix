@@ -9,7 +9,9 @@
 #
 # The realm is *generated* by the consumer from the services that declare an
 # `sso` block and passed as `realm` here. It is seeded with `--import-realm` on
-# first boot; `${VAR}` placeholders are resolved from the environment (the
+# first boot, and reconciled on every activation by `keycloak-reconcile` (Admin
+# API), so later edits to that realm take effect without recreating it.
+# `${VAR}` placeholders in the realm are resolved from the environment (the
 # secretspec env file), keeping client secrets out of the store. `--optimized`
 # is not used: the stock image is not built for our build-time options, so
 # `start` runs its implicit build.
@@ -57,6 +59,12 @@ mkDotsModule {
         default = [ ];
         description = "Dotenv files (e.g. the secretspec env file) providing `KC_BOOTSTRAP_ADMIN_PASSWORD` and the client secrets.";
       };
+
+      envFile = lib.mkOption {
+        type = lib.types.str;
+        default = "/run/secretspec/env";
+        description = "The env file the reconcile unit sources for the admin password and client secrets.";
+      };
     };
 
   toConfig =
@@ -68,6 +76,18 @@ mkDotsModule {
       realm = cfg.realm;
 
       realmJson = (pkgs.formats.json { }).generate "realm.json" realm;
+
+      # What `keycloak-reconcile` upserts into the existing realm.
+      partialJson = (pkgs.formats.json { }).generate "realm-partial.json" {
+        ifResourceExists = "OVERWRITE";
+        roles = realm.roles or { };
+        clients = realm.clients or [ ];
+      };
+
+      reconcile = lib.replaceStrings
+        [ "@PORT@" "@REALM@" "@ADMIN_USER@" "@PARTIAL_JSON@" "@ENV_FILE@" "@CONTAINER@" ]
+        [ (toString cfg.port) realm.realm cfg.adminUser (toString partialJson) cfg.envFile "keycloak" ]
+        (builtins.readFile ./reconcile.sh);
 
       db = {
         name = "keycloak-db";
@@ -122,6 +142,25 @@ mkDotsModule {
       (mkDockerService.config { spec = keycloak; } args)
       {
         networking.firewall.allowedTCPPorts = [ cfg.port ];
+
+        systemd.services.keycloak-reconcile = {
+          description = "Reconcile the Keycloak realm";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "docker-keycloak.service" ];
+          wants = [ "docker-keycloak.service" ];
+          path = [
+            pkgs.curl
+            pkgs.gettext
+            pkgs.docker
+          ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            Restart = "on-failure";
+            RestartSec = 30;
+          };
+          script = reconcile;
+        };
       }
     ];
 }
