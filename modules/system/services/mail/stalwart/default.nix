@@ -8,12 +8,16 @@
 #   * runs `stalwart_0_16` against a generated `config.json` (just the
 #     `DataStore`), and
 #   * optionally drops a declarative apply-plan (`provision`) at
-#     `/etc/stalwart/provision.json`, which operators replay with
-#     `stalwart-cli apply --file /etc/stalwart/provision.json`.
+#     `/etc/stalwart/provision.json` **and replays it automatically** via
+#     `stalwart-provision.service` (a oneshot, run on boot and whenever the
+#     plan changes), authenticated with the admin API key in
+#     `provisionApiKeyFile`.
 #
-# Config is NOT auto-applied: `apply` reconciles (and deletes) everything the
-# plan omits, so it is a deliberate, operator-run step — see the migration
-# runbook in the consuming repo's README.
+# The plan's `upsert`/`update` operations are idempotent and never delete;
+# deletions must be expressed explicitly. `stalwart-cli apply` writes the
+# datastore, but several settings (`MtaStageData`, `SpamSettings`, the SMTP
+# DATA-stage gate) are only read at service start — so the unit restarts
+# Stalwart whenever the plan changed anything.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
 in
@@ -123,8 +127,20 @@ mkDotsModule {
         default = null;
         description = ''
           Optional declarative apply-plan (the JSON/NDJSON format produced by
-          `stalwart-cli snapshot`), installed at `/etc/stalwart/provision.json`.
-          Applied by hand with `stalwart-cli apply`.
+          `stalwart-cli snapshot`), installed at `/etc/stalwart/provision.json`
+          and applied automatically by `stalwart-provision.service`.
+        '';
+      };
+
+      provisionApiKeyFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = ''
+          File holding a Stalwart **admin API key** (WebUI → Settings → API
+          Keys), used by `stalwart-provision.service` to apply `provision`.
+          The management API is OIDC-gated, so a key is required — the admin
+          password is not accepted. When unset, the provision unit is not
+          created and `provision` is only a passive file on disk.
         '';
       };
     };
@@ -226,5 +242,68 @@ mkDotsModule {
           UMask = "0077";
         };
       };
+
+      # Declarative convergence: apply the plan, then restart Stalwart when it
+      # changed anything — `MtaStageData`/`SpamSettings` and the SMTP DATA-stage
+      # gate are only read at service start.
+      systemd.services.stalwart-provision =
+        lib.mkIf (cfg.provision != null && cfg.provisionApiKeyFile != null)
+          {
+            description = "Apply the Stalwart provision plan";
+            after = [ "stalwart.service" ];
+            wants = [ "stalwart.service" ];
+            wantedBy = [ "multi-user.target" ];
+            # A deploy can land before Stalwart answers; never give up retrying
+            # (mirrors the oauth2-proxy gates).
+            startLimitIntervalSec = 0;
+            startLimitBurst = 0;
+            # Re-run whenever the plan changes (i.e. on a new Nix generation).
+            restartTriggers = [ cfg.provision ];
+            path = [
+              cfg.cliPackage
+              pkgs.curl
+              pkgs.systemd
+              pkgs.coreutils
+              pkgs.gnugrep
+            ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              ExecStart = pkgs.writeShellScript "stalwart-provision" ''
+                set -u
+                URL="http://127.0.0.1:8080"
+                PLAN=${lib.escapeShellArg (toString cfg.provision)}
+                KEY_FILE=${lib.escapeShellArg (toString cfg.provisionApiKeyFile)}
+
+                # The API may still be starting; give it up to a minute.
+                n=0
+                until curl -fsS "$URL/jmap/session" >/dev/null 2>&1; do
+                  n=$((n + 1))
+                  if [ "$n" -ge 60 ]; then
+                    echo "Stalwart API not reachable; the next boot will retry."
+                    exit 0
+                  fi
+                  sleep 1
+                done
+
+                if [ ! -r "$KEY_FILE" ]; then
+                  echo "No API key at $KEY_FILE; skipping provision."
+                  exit 0
+                fi
+                KEY="$(cat "$KEY_FILE")"
+
+                out="$(stalwart-cli apply --file "$PLAN" --url "$URL" --api-key "$KEY" 2>&1)" || {
+                  echo "$out"
+                  exit 0
+                }
+                echo "$out"
+
+                if printf '%s' "$out" | grep -qE '[1-9][0-9]* updated'; then
+                  echo "Plan changed; restarting Stalwart to apply it."
+                  systemctl restart stalwart.service || true
+                fi
+              '';
+            };
+          };
     };
 }
