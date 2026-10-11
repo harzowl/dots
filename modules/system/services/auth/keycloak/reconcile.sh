@@ -16,7 +16,9 @@ PROFILE="@PROFILE_JSON@"
 
 if ! curl -fsS "http://127.0.0.1:${PORT}/realms/master/.well-known/openid-configuration" >/dev/null 2>&1; then
   echo "Keycloak not ready on :${PORT}; the timer will retry."
-  exit 0
+kcadm update "realms/${REALM}" @SMTP_UPDATE@
+
+exit 0
 fi
 
 set -a

@@ -111,6 +111,13 @@ mkDotsModule {
         else
           null;
 
+      smtp = realm.smtpServer or { };
+      smtpUpdate = lib.optionalString (smtp != { }) (
+        "kcadm update \"realms/\${REALM}\" "
+        + lib.concatMapStrings (k: "-s 'smtpServer.${k}=${toString smtp.${k}}' ") (lib.attrNames smtp)
+        + "|| true"
+      );
+
       reconcile =
         lib.replaceStrings
           [
@@ -121,6 +128,7 @@ mkDotsModule {
             "@PROFILE_JSON@"
             "@REALM_ADMINS@"
             "@DEFAULT_REQUIRED_ACTIONS@"
+            "@SMTP_UPDATE@"
             "@ENV_FILE@"
             "@CONTAINER@"
           ]
@@ -132,6 +140,7 @@ mkDotsModule {
             (if profileJson != null then toString profileJson else "")
             (lib.concatStringsSep " " cfg.realmAdmins)
             (lib.concatStringsSep " " (realm.defaultRequiredActions or [ ]))
+            smtpUpdate
             cfg.envFile
             "keycloak"
           ]
