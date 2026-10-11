@@ -97,6 +97,15 @@ mkDotsModule {
           default = null;
           description = "File holding the admin account's password (e.g. the secretspec env path).";
         };
+        passwordKey = lib.mkOption {
+          type = lib.types.str;
+          default = "NAVIDROME_ADMIN_PASSWORD";
+          description = ''
+            When `passwordFile` is a dotenv (like `/run/secretspec/env`), the key
+            whose value is the admin password. Ignored if the file holds the bare
+            password.
+          '';
+        };
         ensureAdmins = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
@@ -182,12 +191,12 @@ mkDotsModule {
             if docker exec ${cfg.name} /app/navidrome user list -n 2>/dev/null | cut -d, -f2 | grep -qx '${cfg.admin.username}'; then
               echo "Navidrome admin '${cfg.admin.username}' already exists"
             else
-              pw="$(cat ${toString cfg.admin.passwordFile})"
+              pw="$(sed -n 's/^${cfg.admin.passwordKey}=//p' ${toString cfg.admin.passwordFile})"
               printf '%s\n%s\n' "$pw" "$pw" | script -qec \
                 "docker exec -it ${cfg.name} /app/navidrome user create --username '${cfg.admin.username}' --admin -n" /dev/null
             fi
             ${lib.concatMapStrings (u: ''
-              docker exec ${cfg.name} /app/navidrome user edit --username '${u}' --admin -n >/dev/null 2>&1 || true
+              docker exec ${cfg.name} /app/navidrome user edit --user '${u}' --set-admin -n >/dev/null 2>&1 || true
             '') cfg.admin.ensureAdmins}
           '';
         };
