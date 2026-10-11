@@ -75,7 +75,10 @@ mkDotsModule {
       hostname = if cfg.hostname != null then cfg.hostname else "auth.${domain}";
       realm = cfg.realm;
 
-      realmJson = (pkgs.formats.json { }).generate "realm.json" realm;
+      # `userProfile` is not part of Keycloak's realm representation (the live
+      # realm gets it from the reconcile, below) — keep it out of the imported
+      # JSON so a fresh `--import-realm` never sees an unknown field.
+      realmJson = (pkgs.formats.json { }).generate "realm.json" (lib.removeAttrs realm [ "userProfile" ]);
 
       # What `keycloak-reconcile` upserts into the existing realm.
       partialJson = (pkgs.formats.json { }).generate "realm-partial.json" {
