@@ -65,6 +65,13 @@ mkDotsModule {
         default = "/run/secretspec/env";
         description = "The env file the reconcile unit sources for the admin password and client secrets.";
       };
+
+      realmAdmins = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "me@example.com" ];
+        description = "Usernames to grant the realm's `realm-admin` client role (full administration of this realm). Applied by the reconcile, so it is idempotent.";
+      };
     };
 
   toConfig =
@@ -106,6 +113,7 @@ mkDotsModule {
             "@ADMIN_USER@"
             "@PARTIAL_JSON@"
             "@PROFILE_JSON@"
+            "@REALM_ADMINS@"
             "@ENV_FILE@"
             "@CONTAINER@"
           ]
@@ -115,6 +123,7 @@ mkDotsModule {
             cfg.adminUser
             (toString partialJson)
             (if profileJson != null then toString profileJson else "")
+            (lib.concatStringsSep " " cfg.realmAdmins)
             cfg.envFile
             "keycloak"
           ]

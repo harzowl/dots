@@ -43,4 +43,9 @@ if [ -n "${PROFILE}" ]; then
   kcadm update users/profile -r "${REALM}" -f /tmp/profile.json || true
 fi
 
+# Idempotently give the declared users full administration of this realm.
+for u in @REALM_ADMINS@; do
+  kcadm add-roles -r "${REALM}" --uusername "$u" --cclientid realm-management --rolename realm-admin || true
+done
+
 exit 0
