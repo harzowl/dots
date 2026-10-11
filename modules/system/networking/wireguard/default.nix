@@ -85,9 +85,17 @@ let
             persistentKeepalive = 25;
           }
         ];
-    postSetup = lib.optionalString (
-      !isServer && mesh.routeAll
-    ) "ip route replace ${server.address}/32 via ${lanGateway}";
+    # Keep the server endpoint off the tunnel. This unit runs
+    # `Before=network.target`, i.e. before the LAN is necessarily up, so the
+    # gateway may not be reachable yet; retry rather than dying with
+    # "Nexthop has invalid gateway", which leaves wg0 down and the host
+    # unroutable until the unit is started by hand.
+    postSetup = lib.optionalString (!isServer && mesh.routeAll) ''
+      for _ in $(seq 1 120); do
+        ip route replace ${server.address}/32 via ${lanGateway} 2>/dev/null && break
+        sleep 0.5
+      done
+    '';
   };
 
   interfaces =
