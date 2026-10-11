@@ -269,11 +269,15 @@ mkDotsModule {
             serviceConfig = {
               Type = "oneshot";
               RemainAfterExit = true;
+              StateDirectory = "stalwart-provision";
               ExecStart = pkgs.writeShellScript "stalwart-provision" ''
                 set -u
                 URL="http://127.0.0.1:8080"
-                PLAN=${lib.escapeShellArg (toString cfg.provision)}
+                # The installed copy, not cfg.provision: the latter is a Nix store
+                # *source* path that is not part of the deployed closure.
+                PLAN=/etc/stalwart/provision.json
                 KEY_FILE=${lib.escapeShellArg (toString cfg.provisionApiKeyFile)}
+                STATE=/var/lib/stalwart-provision/applied.sha256
 
                 # The API may still be starting; give it up to a minute.
                 n=0
@@ -298,8 +302,14 @@ mkDotsModule {
                 }
                 echo "$out"
 
-                if printf '%s' "$out" | grep -qE '[1-9][0-9]* updated'; then
-                  echo "Plan changed; restarting Stalwart to apply it."
+                # Plan ops are `update`/`upsert`, which always report as "updated",
+                # so hash the plan to detect a real change — only then restart, since
+                # `MtaStageData`/`SpamSettings` are read at service start.
+                now="$(sha256sum "$PLAN" | cut -d' ' -f1)"
+                prev="$(cat "$STATE" 2>/dev/null || true)"
+                printf '%s\n' "$now" > "$STATE"
+                if [ "$now" != "$prev" ]; then
+                  echo "Provision plan changed; restarting Stalwart to apply it."
                   systemctl restart stalwart.service || true
                 fi
               '';
