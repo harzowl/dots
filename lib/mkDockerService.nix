@@ -80,6 +80,16 @@
         description = "Extra `docker`/`podman` run arguments.";
       };
 
+      environmentFiles = opt "environmentFiles" {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = ''
+          Host files passed to the container with `--env-file` (dotenv format),
+          for secrets that must not live in the Nix store — e.g. the
+          `/run/secretspec/env` file a secretspec scope writes.
+        '';
+      };
+
       openFirewall = opt "openFirewall" {
         type = lib.types.bool;
         default = true;
@@ -128,7 +138,7 @@
         oci-containers = {
           inherit (spec) backend;
           containers.${spec.name} = {
-            inherit (spec) image volumes cmd extraOptions;
+            inherit (spec) image volumes cmd extraOptions environmentFiles;
             inherit environment;
             ports = map (
               p:
