@@ -6,6 +6,7 @@
     ./mail
     ./minecraft
     ./mozhi
+    ./music
     ./passwords
     ./proxy
     ./searxng
