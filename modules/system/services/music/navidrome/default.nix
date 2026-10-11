@@ -187,13 +187,22 @@ mkDotsModule {
             gnugrep
           ];
           script = ''
-            set -eu
+            set -u
+            # A deploy restarts the container; wait for it before touching it.
+            for _ in $(seq 1 60); do
+              docker exec ${cfg.name} /app/navidrome user list -n >/dev/null 2>&1 && break
+              sleep 2
+            done
+
             if docker exec ${cfg.name} /app/navidrome user list -n 2>/dev/null | cut -d, -f2 | grep -qx '${cfg.admin.username}'; then
               echo "Navidrome admin '${cfg.admin.username}' already exists"
             else
               pw="$(sed -n 's/^${cfg.admin.passwordKey}=//p' ${toString cfg.admin.passwordFile})"
+              # The CLI prompts on a TTY; feed it via a PTY. The PTY echoes the
+              # input, so keep its output off the journal.
               printf '%s\n%s\n' "$pw" "$pw" | script -qec \
-                "docker exec -it ${cfg.name} /app/navidrome user create --username '${cfg.admin.username}' --admin -n" /dev/null
+                "docker exec -it ${cfg.name} /app/navidrome user create --username '${cfg.admin.username}' --admin -n" /dev/null >/dev/null 2>&1 \
+                || echo "warning: could not create the Navidrome admin"
             fi
             ${lib.concatMapStrings (u: ''
               docker exec ${cfg.name} /app/navidrome user edit --user '${u}' --set-admin -n >/dev/null 2>&1 || true
