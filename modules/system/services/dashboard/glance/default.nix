@@ -2,6 +2,9 @@ let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
 
+  # Built-in Glance themes, exposed through the `theme` option below.
+  builtinThemes = import ./themes.nix;
+
   defaults = {
     name = "glance";
     image = "glanceapp/glance:latest";
@@ -59,6 +62,38 @@ mkDotsModule {
         default = [ ];
         description = "Dashboard pages; each lists services grouped by category.";
       };
+
+      theme = lib.mkOption {
+        default = { };
+        description = "Default theme and the presets offered in the picker.";
+        type = lib.types.submodule {
+          options = {
+            default = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Preset name (from the built-ins or `presets`) used as the default theme.";
+            };
+
+            allThemes = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Expose every built-in Glance theme in the picker.";
+            };
+
+            presets = lib.mkOption {
+              type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
+              default = { };
+              description = "Extra presets (`name` -> theme properties), merged over the built-ins.";
+            };
+
+            disablePicker = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Hide the theme picker and force the default theme.";
+            };
+          };
+        };
+      };
     };
 
   toConfig =
@@ -94,9 +129,32 @@ mkDotsModule {
           ];
         };
 
-      config = (pkgs.formats.yaml { }).generate "glance.yml" {
-        pages = map page cfg.pages;
-      };
+      # Presets offered in the picker: the built-ins (if enabled) plus any extras.
+      presets = (lib.optionalAttrs cfg.theme.allThemes builtinThemes) // cfg.theme.presets;
+
+      # The default theme's colours come from the named preset (built-in or extra).
+      defaultColors =
+        if cfg.theme.default == null then
+          { }
+        else
+          builtinThemes.${cfg.theme.default} or cfg.theme.presets.${cfg.theme.default} or { };
+
+      theme =
+        defaultColors
+        // {
+          disable-picker = cfg.theme.disablePicker;
+        }
+        // lib.optionalAttrs (presets != { }) { inherit presets; };
+
+      themeWanted =
+        cfg.theme.default != null
+        || cfg.theme.allThemes
+        || cfg.theme.presets != { }
+        || cfg.theme.disablePicker;
+
+      config = (pkgs.formats.yaml { }).generate "glance.yml" (
+        { pages = map page cfg.pages; } // lib.optionalAttrs themeWanted { theme = theme; }
+      );
     in
     (mkDockerService.config {
       spec = cfg // {
