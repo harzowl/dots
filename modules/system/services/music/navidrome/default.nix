@@ -82,6 +82,30 @@ mkDotsModule {
           '';
         };
       };
+      admin = {
+        username = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            Ensure a Navidrome admin account with this username exists. Navidrome
+            has no OIDC, so this seeds the local admin; logins still go through
+            the gate. Requires `passwordFile`.
+          '';
+        };
+        passwordFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.path;
+          default = null;
+          description = "File holding the admin account's password (e.g. the secretspec env path).";
+        };
+        ensureAdmins = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = ''
+            Navidrome usernames to keep marked as admins (e.g. the Keycloak
+            admins). They must already exist in Navidrome.
+          '';
+        };
+      };
     };
 
   toConfig =
@@ -134,6 +158,39 @@ mkDotsModule {
         ]
         ++ map (f: "C '${pluginsDir}/${baseNameOf f}' 0600 ${cfg.dataOwner} - - ${f}") cfg.plugins.files;
         virtualisation.oci-containers.containers.${cfg.name}.environment = ndEnvironment // pluginEnvironment;
+
+        # Navidrome has no OIDC, so seed its admin account and keep the listed
+        # admins marked admin. Idempotent, and re-checked when the container
+        # (re)starts. The password comes from a file (e.g. a secretspec path).
+        systemd.services."${cfg.name}-admin" = lib.mkIf (cfg.admin.username != null) {
+          description = "Ensure the Navidrome admin account";
+          after = [ "docker-${cfg.name}.service" ];
+          requires = [ "docker-${cfg.name}.service" ];
+          partOf = [ "docker-${cfg.name}.service" ];
+          wantedBy = [ "multi-user.target" ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+          };
+          path = with args.pkgs; [
+            docker
+            util-linux
+            gnugrep
+          ];
+          script = ''
+            set -eu
+            if docker exec ${cfg.name} /app/navidrome user list -n 2>/dev/null | cut -d, -f2 | grep -qx '${cfg.admin.username}'; then
+              echo "Navidrome admin '${cfg.admin.username}' already exists"
+            else
+              pw="$(cat ${toString cfg.adminPasswordFile})"
+              printf '%s\n%s\n' "$pw" "$pw" | script -qec \
+                "docker exec -it ${cfg.name} /app/navidrome user create --username '${cfg.admin.username}' --admin -n" /dev/null
+            fi
+            ${lib.concatMapStrings (u: ''
+              docker exec ${cfg.name} /app/navidrome user edit --username '${u}' --admin -n >/dev/null 2>&1 || true
+            '') cfg.admin.ensureAdmins}
+          '';
+        };
       }
     ];
 }
