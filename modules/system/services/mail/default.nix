@@ -1,5 +1,6 @@
 {
   imports = [
+    ./bulwark
     ./stalwart
   ];
 }
