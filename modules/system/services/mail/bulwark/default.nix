@@ -37,7 +37,28 @@ mkDotsModule {
 
   options =
     { lib, ... }:
-    mkDockerService.options { inherit lib defaults; };
+    (mkDockerService.options { inherit lib defaults; })
+    // {
+      dataOwner = lib.mkOption {
+        type = lib.types.str;
+        default = "1001:65533";
+        description = ''
+          Numeric `user:group` that owns the bind-mount directories. The image
+          runs as `nextjs` (UID 1001, GID 65533), but docker creates a missing
+          bind mount owned by root, which the container then cannot write — so
+          the directories are pre-created with this owner.
+        '';
+      };
+    };
 
-  toConfig = args: cfg: mkDockerService.config { spec = cfg; inherit defaults; } args;
+  toConfig =
+    args: cfg:
+    let
+      inherit (args) lib;
+      hostDir = v: lib.head (lib.splitString ":" (toString v));
+    in
+    (mkDockerService.config { spec = cfg; inherit defaults; } args)
+    // {
+      systemd.tmpfiles.rules = map (d: "d '${d}' 0755 ${cfg.dataOwner} - -") (map hostDir cfg.volumes);
+    };
 }
