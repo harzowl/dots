@@ -155,13 +155,15 @@ mkDotsModule {
           script = reconcile;
         };
 
-        # Runs once at activation and, because Keycloak's first boot builds for
-        # minutes, keeps retrying until the server answers.
+        # A deploy restarts Keycloak (its realm/config mounts change), and a
+        # realm client isn't live until this reconcile runs — so retry often
+        # (the script is cheap and exits immediately when Keycloak isn't up yet)
+        # rather than letting a new client wait up to 15 minutes.
         systemd.timers.keycloak-reconcile = {
           wantedBy = [ "timers.target" ];
           timerConfig = {
-            OnBootSec = "2min";
-            OnUnitActiveSec = "15min";
+            OnBootSec = "30s";
+            OnUnitActiveSec = "1min";
           };
         };
       }
