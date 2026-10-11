@@ -133,6 +133,9 @@ in
       wantedBy = [ "multi-user.target" ];
       before = cfg.consumers;
       environment = cfg.environment;
+      # Re-run when the manifest or any provider file changes, so a secret edit
+      # or rename is re-materialised on the next activation.
+      restartTriggers = [ cfg.manifest ] ++ lib.attrValues cfg.files;
       # `sops` is shelled out to by the sops provider; secretspec must be on PATH.
       path = [ pkgs.sops cfg.package ];
       serviceConfig = {
