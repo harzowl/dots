@@ -24,9 +24,15 @@ let
     else if value == false || value == null then
       [ ]
     else if lib.isList value then
-      [ flag (lib.concatStringsSep "," (map toString value)) ]
+      [
+        flag
+        (lib.concatStringsSep "," (map toString value))
+      ]
     else
-      [ flag (toString value) ];
+      [
+        flag
+        (toString value)
+      ];
 
   tokens = builtins.concatLists (lib.mapAttrsToList toTokens settings);
 in

@@ -2,33 +2,35 @@
 # definition drives either target. Ported from nix-dotfiles, including the
 # `patches.nerd-font-icons` overlay that swaps nix-output-monitor's glyphs for
 # Nerd Font codepoints (on by default).
-{ target, root ? [ "dots" target ] }:
+{
+  target,
+  root ? [
+    "dots"
+    target
+  ],
+}:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
 
   # Replace nix-output-monitor's unicode glyphs with Nerd Font codepoints so they
   # render in a patched font. Ported verbatim from nix-dotfiles.
-  nomOverlay =
-    args: _final: prev:
-    {
-      nix-output-monitor = prev.nix-output-monitor.overrideAttrs (old: {
-        postPatch = (old.postPatch or "") + ''
-          sed -i -e ${
-            args.lib.escapeShellArg ''
-              s/↓/\\xf072e/
-              s/↑/\\xf0737/
-              s/⏱/\\xf520/
-              s/⏵/\\xf04b/
-              s/✔/\\xf00c/
-              s/⏸/\\xf04d/
-              s/⚠/\\xf071/
-              s/∅/\\xf1da/
-              s/∑/\\xf04a0/
-            ''
-          } lib/NOM/Print.hs
-        '';
-      });
-    };
+  nomOverlay = args: _final: prev: {
+    nix-output-monitor = prev.nix-output-monitor.overrideAttrs (old: {
+      postPatch = (old.postPatch or "") + ''
+        sed -i -e ${args.lib.escapeShellArg ''
+          s/↓/\\xf072e/
+          s/↑/\\xf0737/
+          s/⏱/\\xf520/
+          s/⏵/\\xf04b/
+          s/✔/\\xf00c/
+          s/⏸/\\xf04d/
+          s/⚠/\\xf071/
+          s/∅/\\xf1da/
+          s/∑/\\xf04a0/
+        ''} lib/NOM/Print.hs
+      '';
+    });
+  };
 in
 mkSharedProgram {
   inherit target root;

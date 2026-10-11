@@ -40,5 +40,8 @@
       # Reusable, overridable baseline bundles (see presets/). They are NixOS
       # modules, so compose them with `imports = [ dots.nixosModules.presetServer ];`.
       nixosModules.presetServer = import ./presets/server.nix;
+
+      # `nix fmt` (and the pre-commit hook) format Nix with nixfmt.
+      formatter.x86_64-linux = inputs.nixpkgs.legacyPackages.x86_64-linux.nixfmt;
     };
 }

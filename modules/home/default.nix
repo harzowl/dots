@@ -1,4 +1,10 @@
-{ root ? [ "dots" "home" ], ... }:
+{
+  root ? [
+    "dots"
+    "home"
+  ],
+  ...
+}:
 {
   imports = [
     (import ./core { inherit root; })

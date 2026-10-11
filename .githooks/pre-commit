@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Format staged Nix files with the flake's formatter, then re-stage them.
+set -euo pipefail
+
+files=$(git diff --cached --name-only --diff-filter=ACM -- '*.nix')
+[ -z "$files" ] && exit 0
+
+# shellcheck disable=SC2086
+nix fmt -- $files
+# shellcheck disable=SC2086
+git add -- $files

@@ -1,7 +1,13 @@
 # fish, defined once for both targets. NixOS and home-manager both expose
 # `programs.fish`; the theme file lands in the system conf.d on the system target
 # and in the user's config on the home target.
-{ target, root ? [ "dots" target ] }:
+{
+  target,
+  root ? [
+    "dots"
+    target
+  ],
+}:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
   fishTheme = builtins.readFile ./dots-theme.fish;
@@ -31,27 +37,23 @@ mkSharedProgram {
       };
     };
 
-  home =
-    args: cfg:
-    {
-      programs.fish = {
-        enable = true;
-        package = cfg.package;
-      }
-      // cfg.settings;
+  home = args: cfg: {
+    programs.fish = {
+      enable = true;
+      package = cfg.package;
+    }
+    // cfg.settings;
 
-      xdg.configFile."fish/conf.d/dots-theme.fish".text = fishTheme;
-    };
+    xdg.configFile."fish/conf.d/dots-theme.fish".text = fishTheme;
+  };
 
-  system =
-    args: cfg:
-    {
-      programs.fish = {
-        enable = true;
-        package = cfg.package;
-      }
-      // cfg.settings;
+  system = args: cfg: {
+    programs.fish = {
+      enable = true;
+      package = cfg.package;
+    }
+    // cfg.settings;
 
-      environment.etc."fish/conf.d/dots-theme.fish".text = fishTheme;
-    };
+    environment.etc."fish/conf.d/dots-theme.fish".text = fishTheme;
+  };
 }

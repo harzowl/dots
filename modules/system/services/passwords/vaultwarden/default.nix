@@ -29,5 +29,10 @@ mkDotsModule {
     { lib, ... }:
     mkDockerService.options { inherit lib defaults; };
 
-  toConfig = args: cfg: mkDockerService.config { spec = cfg; inherit defaults; } args;
+  toConfig =
+    args: cfg:
+    mkDockerService.config {
+      spec = cfg;
+      inherit defaults;
+    } args;
 }

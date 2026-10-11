@@ -14,13 +14,21 @@
   when ? (cfg: cfg.enable),
   imports ? [ ],
 }:
-{ config, lib, pkgs, modulesPath, ... }@args:
+{
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  ...
+}@args:
 let
   cfg = lib.getAttrFromPath ([ "dots" ] ++ optionPath) config;
   # `_module.args.pkgsUnstable` (nixpkgs-unstable, exposed by the dots modules)
   # isn't part of this wrapper's function arguments, so surface it for
   # `options`/`toConfig`.
-  args' = args // { pkgsUnstable = config._module.args.pkgsUnstable or null; };
+  args' = args // {
+    pkgsUnstable = config._module.args.pkgsUnstable or null;
+  };
 in
 {
   imports = if lib.isFunction imports then imports args' else imports;

@@ -135,8 +135,7 @@ mkDotsModule {
       # `musicFolder` -> `ND_MUSICFOLDER`, `ExtAuth.TrustedSources` ->
       # `ND_EXTAUTH_TRUSTEDSOURCES`.
       ndEnvironment = lib.mapAttrs' (
-        k: v:
-        lib.nameValuePair ("ND_" + lib.toUpper (lib.replaceStrings [ "." ] [ "_" ] k)) (envValue v)
+        k: v: lib.nameValuePair ("ND_" + lib.toUpper (lib.replaceStrings [ "." ] [ "_" ] k)) (envValue v)
       ) cfg.settings;
 
       pluginEnvironment = {
@@ -166,7 +165,8 @@ mkDotsModule {
           "d '${pluginsDir}' 0700 ${cfg.dataOwner} - -"
         ]
         ++ map (f: "C '${pluginsDir}/${baseNameOf f}' 0600 ${cfg.dataOwner} - - ${f}") cfg.plugins.files;
-        virtualisation.oci-containers.containers.${cfg.name}.environment = ndEnvironment // pluginEnvironment;
+        virtualisation.oci-containers.containers.${cfg.name}.environment =
+          ndEnvironment // pluginEnvironment;
 
         # Navidrome has no OIDC, so seed its admin account and keep the listed
         # admins marked admin. Idempotent, and re-checked when the container

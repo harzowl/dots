@@ -57,7 +57,10 @@ mkDotsModule {
       inherit (args) lib;
       hostDir = v: lib.head (lib.splitString ":" (toString v));
     in
-    (mkDockerService.config { spec = cfg; inherit defaults; } args)
+    (mkDockerService.config {
+      spec = cfg;
+      inherit defaults;
+    } args)
     // {
       systemd.tmpfiles.rules = map (d: "d '${d}' 0755 ${cfg.dataOwner} - -") (map hostDir cfg.volumes);
     };

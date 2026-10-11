@@ -13,7 +13,10 @@
 # also turns the backend on for the host (docker by default).
 {
   options =
-    { lib, defaults ? { } }:
+    {
+      lib,
+      defaults ? { },
+    }:
     let
       opt =
         name: attrs:
@@ -98,7 +101,10 @@
     };
 
   config =
-    { spec, defaults ? { } }:
+    {
+      spec,
+      defaults ? { },
+    }:
     { lib, ... }:
     let
       # Merge the service's default settings with the user's (an option default
@@ -138,7 +144,13 @@
         oci-containers = {
           inherit (spec) backend;
           containers.${spec.name} = {
-            inherit (spec) image volumes cmd extraOptions environmentFiles;
+            inherit (spec)
+              image
+              volumes
+              cmd
+              extraOptions
+              environmentFiles
+              ;
             inherit environment;
             ports = map (
               p:

@@ -27,7 +27,13 @@ mkDotsModule {
   description = "Stalwart mail server (v0.16+)";
 
   options =
-    { config, lib, pkgs, pkgsUnstable, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      pkgsUnstable,
+      ...
+    }:
     let
       cfg = config.dots.system.services.mail.stalwart;
     in
@@ -137,13 +143,12 @@ mkDotsModule {
         cfg.cliPackage
       ];
 
-      environment.etc =
-        {
-          "stalwart/config.json".source = configJson;
-        }
-        // lib.optionalAttrs (cfg.provision != null) {
-          "stalwart/provision.json".source = cfg.provision;
-        };
+      environment.etc = {
+        "stalwart/config.json".source = configJson;
+      }
+      // lib.optionalAttrs (cfg.provision != null) {
+        "stalwart/provision.json".source = cfg.provision;
+      };
 
       users = {
         groups.stalwart = { };

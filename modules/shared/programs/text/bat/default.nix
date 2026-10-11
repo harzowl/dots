@@ -1,6 +1,12 @@
 # bat, defined once. home-manager ships `programs.bat` (its config file lands at
 # `~/.config/bat/config`); the system target installs the package.
-{ target, root ? [ "dots" target ] }:
+{
+  target,
+  root ? [
+    "dots"
+    target
+  ],
+}:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
   mkShellAlias = import ../../../../../lib/mkShellAlias.nix;
@@ -45,13 +51,25 @@ mkSharedProgram {
           inherit (cfg) package config;
         };
       }
-      (args.lib.mkIf cfg.aliasCat (mkShellAlias { aliases = { cat = "bat"; }; } args))
+      (args.lib.mkIf cfg.aliasCat (
+        mkShellAlias {
+          aliases = {
+            cat = "bat";
+          };
+        } args
+      ))
     ];
 
   system =
     args: cfg:
     args.lib.mkMerge [
       { environment.systemPackages = [ cfg.package ]; }
-      (args.lib.mkIf cfg.aliasCat (mkShellAlias { aliases = { cat = "bat"; }; } args))
+      (args.lib.mkIf cfg.aliasCat (
+        mkShellAlias {
+          aliases = {
+            cat = "bat";
+          };
+        } args
+      ))
     ];
 }

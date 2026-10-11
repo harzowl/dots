@@ -1,7 +1,13 @@
 # duf, defined once. duf has no config file, so `settings` are turned into flags
 # on a `duf` wrapper that execs the real binary, e.g.
 # `settings.only = [ "special" ]` runs `duf --only special`.
-{ target, root ? [ "dots" target ] }:
+{
+  target,
+  root ? [
+    "dots"
+    target
+  ],
+}:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
   mkCliWrapper = import ../../../../../lib/mkCliWrapper.nix;

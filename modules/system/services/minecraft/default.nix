@@ -82,9 +82,19 @@ mkDotsModule {
       lib = args.lib;
     in
     lib.mkMerge [
-      (lib.mkIf cfg.enable ((mkDockerService.config { spec = cfg; defaults = serverDefaults; }) args))
+      (lib.mkIf cfg.enable (
+        (mkDockerService.config {
+          spec = cfg;
+          defaults = serverDefaults;
+        })
+          args
+      ))
       (lib.mkIf cfg.router.enable (
-        (mkDockerService.config { spec = cfg.router; defaults = routerDefaults; }) args
+        (mkDockerService.config {
+          spec = cfg.router;
+          defaults = routerDefaults;
+        })
+          args
       ))
     ];
 }

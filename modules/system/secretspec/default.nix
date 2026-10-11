@@ -30,7 +30,9 @@ let
 
   secretspec = pkgsUnstable.secretspec;
 
-  providerArg = lib.optionalString (cfg.provider != null) " --provider ${lib.escapeShellArg cfg.provider}";
+  providerArg = lib.optionalString (
+    cfg.provider != null
+  ) " --provider ${lib.escapeShellArg cfg.provider}";
   scopeArg = lib.optionalString (cfg.scope != null) " --scope ${lib.escapeShellArg cfg.scope}";
   manifest = lib.escapeShellArg (toString cfg.manifest);
   profileArg = " --profile ${lib.escapeShellArg cfg.profile}";
@@ -75,7 +77,9 @@ in
     environment = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = { };
-      example = { SOPS_AGE_KEY_FILE = "/etc/secretspec/age.key"; };
+      example = {
+        SOPS_AGE_KEY_FILE = "/etc/secretspec/age.key";
+      };
       description = "Environment for the resolver, e.g. `SOPS_AGE_KEY_FILE`.";
     };
 
@@ -102,7 +106,9 @@ in
     files = lib.mkOption {
       type = lib.types.attrsOf lib.types.path;
       default = { };
-      example = { "secrets.enc.yaml" = ../secrets.enc.yaml; };
+      example = {
+        "secrets.enc.yaml" = ../secrets.enc.yaml;
+      };
       description = ''
         Extra files deployed under `/etc/secretspec/<name>` for the provider to
         read, e.g. the SOPS-encrypted file referenced by the manifest. Deployed
@@ -122,43 +128,47 @@ in
     # The manifest (and any provider files) go under /etc/secretspec so they
     # enter the system closure: a bare store path referenced only from the
     # unit's script is not tracked and would be missing on the target.
-    environment.etc =
-      { "secretspec/secretspec.toml".source = cfg.manifest; }
-      // lib.mapAttrs' (name: path: lib.nameValuePair "secretspec/${name}" { source = path; }) cfg.files;
+    environment.etc = {
+      "secretspec/secretspec.toml".source = cfg.manifest;
+    }
+    // lib.mapAttrs' (name: path: lib.nameValuePair "secretspec/${name}" { source = path; }) cfg.files;
 
     systemd.services = lib.mkMerge [
       {
         secretspec = {
           description = "Resolve secrets with SecretSpec";
-      wantedBy = [ "multi-user.target" ];
-      before = cfg.consumers;
-      environment = cfg.environment;
-      # Re-run when the manifest or any provider file changes, so a secret edit
-      # or rename is re-materialised on the next activation.
-      restartTriggers = [ cfg.manifest ] ++ lib.attrValues cfg.files;
-      # `sops` is shelled out to by the sops provider; secretspec must be on PATH.
-      path = [ pkgs.sops cfg.package ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        RuntimeDirectory = "secretspec";
-        RuntimeDirectoryMode = "0700";
-      };
-      script = ''
-        set -eu
-        ${lib.optionalString cfg.envFile ''
-          ${cfg.package}/bin/secretspec export \
-            --file /etc/secretspec/secretspec.toml${profileArg}${scopeArg}${providerArg} --format dotenv \
-            > /run/secretspec/env
-          chmod 600 /run/secretspec/env
-        ''}
-        ${lib.concatMapStrings (name: ''
-          ${cfg.package}/bin/secretspec get \
-            --file /etc/secretspec/secretspec.toml${profileArg}${providerArg} ${lib.escapeShellArg name} \
-            > /run/secretspec/${lib.escapeShellArg name}
-          chmod 600 /run/secretspec/${lib.escapeShellArg name}
-        '') cfg.secrets}
-      '';
+          wantedBy = [ "multi-user.target" ];
+          before = cfg.consumers;
+          environment = cfg.environment;
+          # Re-run when the manifest or any provider file changes, so a secret edit
+          # or rename is re-materialised on the next activation.
+          restartTriggers = [ cfg.manifest ] ++ lib.attrValues cfg.files;
+          # `sops` is shelled out to by the sops provider; secretspec must be on PATH.
+          path = [
+            pkgs.sops
+            cfg.package
+          ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            RuntimeDirectory = "secretspec";
+            RuntimeDirectoryMode = "0700";
+          };
+          script = ''
+            set -eu
+            ${lib.optionalString cfg.envFile ''
+              ${cfg.package}/bin/secretspec export \
+                --file /etc/secretspec/secretspec.toml${profileArg}${scopeArg}${providerArg} --format dotenv \
+                > /run/secretspec/env
+              chmod 600 /run/secretspec/env
+            ''}
+            ${lib.concatMapStrings (name: ''
+              ${cfg.package}/bin/secretspec get \
+                --file /etc/secretspec/secretspec.toml${profileArg}${providerArg} ${lib.escapeShellArg name} \
+                > /run/secretspec/${lib.escapeShellArg name}
+              chmod 600 /run/secretspec/${lib.escapeShellArg name}
+            '') cfg.secrets}
+          '';
         };
       }
       (lib.genAttrs (map (u: lib.removeSuffix ".service" u) cfg.consumers) (_: {

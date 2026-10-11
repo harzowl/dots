@@ -84,10 +84,11 @@ mkDotsModule {
         clients = realm.clients or [ ];
       };
 
-      reconcile = lib.replaceStrings
-        [ "@PORT@" "@REALM@" "@ADMIN_USER@" "@PARTIAL_JSON@" "@ENV_FILE@" "@CONTAINER@" ]
-        [ (toString cfg.port) realm.realm cfg.adminUser (toString partialJson) cfg.envFile "keycloak" ]
-        (builtins.readFile ./reconcile.sh);
+      reconcile =
+        lib.replaceStrings
+          [ "@PORT@" "@REALM@" "@ADMIN_USER@" "@PARTIAL_JSON@" "@ENV_FILE@" "@CONTAINER@" ]
+          [ (toString cfg.port) realm.realm cfg.adminUser (toString partialJson) cfg.envFile "keycloak" ]
+          (builtins.readFile ./reconcile.sh);
 
       db = {
         name = "keycloak-db";

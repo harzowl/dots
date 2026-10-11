@@ -11,7 +11,10 @@
 # they need them; `home` and `system` take `args` first, then `cfg`.
 {
   target, # "system" | "home" — which projection to emit
-  root ? [ "dots" target ], # option-path prefix the program is declared under
+  root ? [
+    "dots"
+    target
+  ], # option-path prefix the program is declared under
   optionPath, # path under `root`, e.g. [ "programs" "monitoring" "bottom" ]
   description, # shown in the generated `enable` option
   options ? (_: { }),
@@ -19,7 +22,13 @@
   system, # args -> cfg -> attrset (NixOS config)
   imports ? [ ],
 }:
-{ config, lib, pkgs, modulesPath, ... }@args:
+{
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  ...
+}@args:
 let
   fullPath = root ++ optionPath;
   cfg = lib.getAttrFromPath fullPath config;
@@ -27,11 +36,7 @@ in
 {
   imports = if lib.isFunction imports then imports args else imports;
 
-  options = lib.setAttrByPath fullPath (
-    { enable = lib.mkEnableOption description; } // options args
-  );
+  options = lib.setAttrByPath fullPath ({ enable = lib.mkEnableOption description; } // options args);
 
-  config = lib.mkIf cfg.enable (
-    if target == "home" then home args cfg else system args cfg
-  );
+  config = lib.mkIf cfg.enable (if target == "home" then home args cfg else system args cfg);
 }

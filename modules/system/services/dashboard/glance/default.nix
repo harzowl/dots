@@ -114,21 +114,23 @@ mkDotsModule {
 
       link =
         s:
-        { inherit (s) title url; }
+        {
+          inherit (s) title url;
+        }
         // lib.optionalAttrs (s.icon != null) { inherit (s) icon; }
         // lib.optionalAttrs (s.checkUrl != null) { "check-url" = s.checkUrl; };
 
-      page =
-        p:
-        {
-          name = p.name;
-          columns = [
-            {
-              size = "full";
-              widgets = lib.optional (cfg.search != null) {
+      page = p: {
+        name = p.name;
+        columns = [
+          {
+            size = "full";
+            widgets =
+              lib.optional (cfg.search != null) {
                 type = "search";
                 "search-engine" = cfg.search;
-              } ++ [
+              }
+              ++ [
                 {
                   type = "monitor";
                   title = "Services";
@@ -136,9 +138,9 @@ mkDotsModule {
                   sites = map link p.services;
                 }
               ];
-            }
-          ];
-        };
+          }
+        ];
+      };
 
       # Presets offered in the picker: the built-ins (if enabled) plus any extras.
       presets = (lib.optionalAttrs cfg.theme.allThemes builtinThemes) // cfg.theme.presets;
@@ -172,5 +174,6 @@ mkDotsModule {
         volumes = cfg.volumes ++ [ "${config}:/app/config/glance.yml:ro" ];
       };
       inherit defaults;
-    }) args;
+    })
+      args;
 }

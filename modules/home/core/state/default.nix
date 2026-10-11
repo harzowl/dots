@@ -1,4 +1,9 @@
-{ root ? [ "dots" "home" ] }:
+{
+  root ? [
+    "dots"
+    "home"
+  ],
+}:
 { config, lib, ... }:
 let
   path = root ++ [ "stateVersion" ];

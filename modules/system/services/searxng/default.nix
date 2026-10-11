@@ -42,5 +42,6 @@ mkDotsModule {
         volumes = cfg.volumes ++ engineMounts;
       };
       inherit defaults;
-    }) args;
+    })
+      args;
 }

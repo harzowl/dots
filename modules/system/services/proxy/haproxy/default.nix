@@ -55,16 +55,14 @@ mkDotsModule {
       # A target may be a mesh member (→ its tunnel IP) or an address.
       resolve = host: args.config.dots.system.networking.wireguard.mesh.memberIps.${host} or host;
       listenPort = f: if f.listen != null then f.listen else f.port;
-      mkForward =
-        name: f:
-        ''
-          frontend ft_${name}
-            bind :${toString (listenPort f)}
-            default_backend bk_${name}
+      mkForward = name: f: ''
+        frontend ft_${name}
+          bind :${toString (listenPort f)}
+          default_backend bk_${name}
 
-          backend bk_${name}
-            server ${name} ${resolve f.host}:${toString f.port} send-proxy-v2
-        '';
+        backend bk_${name}
+          server ${name} ${resolve f.host}:${toString f.port} send-proxy-v2
+      '';
       forwards = lib.mapAttrsToList mkForward cfg.forwards;
     in
     {
@@ -83,7 +81,8 @@ mkDotsModule {
             timeout client 1m
             timeout server 1m
 
-        '' + lib.concatStringsSep "\n" forwards;
+        ''
+        + lib.concatStringsSep "\n" forwards;
       };
 
       networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall (

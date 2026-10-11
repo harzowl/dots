@@ -45,10 +45,7 @@ let
     lib.imap0 (
       i: n:
       lib.nameValuePair n (
-        if mesh.members.${n}.ip != null then
-          mesh.members.${n}.ip
-        else
-          "${mesh.subnet}.${toString (i + 1)}"
+        if mesh.members.${n}.ip != null then mesh.members.${n}.ip else "${mesh.subnet}.${toString (i + 1)}"
       )
     ) names
   );
@@ -88,10 +85,13 @@ let
             persistentKeepalive = 25;
           }
         ];
-    postSetup = lib.optionalString (!isServer && mesh.routeAll) "ip route replace ${server.address}/32 via ${lanGateway}";
+    postSetup = lib.optionalString (
+      !isServer && mesh.routeAll
+    ) "ip route replace ${server.address}/32 via ${lanGateway}";
   };
 
-  interfaces = cfg.interfaces // lib.optionalAttrs participating { ${mesh.interface} = meshInterface; };
+  interfaces =
+    cfg.interfaces // lib.optionalAttrs participating { ${mesh.interface} = meshInterface; };
   egressOn = cfg.egress.enable || isServer;
   listenPorts = lib.filter (p: p != null) (map (i: i.listenPort or null) (lib.attrValues interfaces));
 in

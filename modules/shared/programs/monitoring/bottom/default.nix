@@ -6,7 +6,13 @@
 #
 #   system target -> install the package system-wide
 #   home target   -> manage `programs.bottom` (package + settings) per user
-{ target, root ? [ "dots" target ] }:
+{
+  target,
+  root ? [
+    "dots"
+    target
+  ],
+}:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
   mkShellAlias = import ../../../../../lib/mkShellAlias.nix;

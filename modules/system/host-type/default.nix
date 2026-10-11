@@ -13,10 +13,16 @@
 #   "generic"      — bare metal / VM (pass this explicitly; nothing extra).
 #   "lxc"          — Proxmox LXC guest; reuses ../lxc (`dots.system.lxc`).
 #   "digitalOcean" — DigitalOcean image layout (GRUB to /dev/vda, cloud-init).
-{ hostType, lib, modulesPath, ... }:
 {
-  imports = lib.optional (hostType == "digitalOcean")
-    (modulesPath + "/virtualisation/digital-ocean-config.nix");
+  hostType,
+  lib,
+  modulesPath,
+  ...
+}:
+{
+  imports = lib.optional (hostType == "digitalOcean") (
+    modulesPath + "/virtualisation/digital-ocean-config.nix"
+  );
 
   options.dots.system.hostType = lib.mkOption {
     type = lib.types.enum [

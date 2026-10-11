@@ -87,7 +87,12 @@ in
       enabled = lib.filterAttrs (_: g: g.enable) config.dots.system.services.auth.oauth2-proxy.gates;
 
       mkContainer = g: {
-        inherit (g) image volumes cmd environmentFiles;
+        inherit (g)
+          image
+          volumes
+          cmd
+          environmentFiles
+          ;
         extraOptions = [ "--network=host" ];
         environment = lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) (
           { oauth2ProxyHttpAddress = "0.0.0.0:${toString g.port}"; } // g.settings
@@ -106,7 +111,9 @@ in
 
       virtualisation.oci-containers = {
         backend = "docker";
-        containers = lib.mapAttrs' (name: g: lib.nameValuePair "oauth2-proxy-${name}" (mkContainer g)) enabled;
+        containers = lib.mapAttrs' (
+          name: g: lib.nameValuePair "oauth2-proxy-${name}" (mkContainer g)
+        ) enabled;
       };
 
       networking.firewall.allowedTCPPorts = map (g: g.port) (lib.attrValues enabled);

@@ -7,7 +7,13 @@
 #
 # `aliasLs` replaces `ls` with eza in every shell, and `aliases` adds any extra
 # ones (e.g. `{ t = "eza --tree"; }`).
-{ target, root ? [ "dots" target ] }:
+{
+  target,
+  root ? [
+    "dots"
+    target
+  ],
+}:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
   mkShellAlias = import ../../../../../lib/mkShellAlias.nix;
@@ -81,16 +87,33 @@ mkSharedProgram {
       {
         programs.eza = {
           enable = true;
-          inherit (cfg) package icons extraOptions theme;
+          inherit (cfg)
+            package
+            icons
+            extraOptions
+            theme
+            ;
         };
       }
-      (args.lib.mkIf cfg.aliasLs (mkShellAlias { aliases = { ls = "eza"; }; } args))
+      (args.lib.mkIf cfg.aliasLs (
+        mkShellAlias {
+          aliases = {
+            ls = "eza";
+          };
+        } args
+      ))
     ];
 
   system =
     args: cfg:
     args.lib.mkMerge [
       { environment.systemPackages = [ cfg.package ]; }
-      (args.lib.mkIf cfg.aliasLs (mkShellAlias { aliases = { ls = "eza"; }; } args))
+      (args.lib.mkIf cfg.aliasLs (
+        mkShellAlias {
+          aliases = {
+            ls = "eza";
+          };
+        } args
+      ))
     ];
 }

@@ -1,6 +1,12 @@
 # fd — a simple, fast alternative to `find`. Uses the system package on the
 # system target and `home.packages` on the home target.
-{ target, root ? [ "dots" target ] }:
+{
+  target,
+  root ? [
+    "dots"
+    target
+  ],
+}:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
 in

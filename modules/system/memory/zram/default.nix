@@ -35,16 +35,14 @@ mkDotsModule {
       };
 
       algorithm = lib.mkOption {
-        type = lib.types.either (
-          lib.types.enum [
-            "842"
-            "lzo"
-            "lzo-rle"
-            "lz4"
-            "lz4hc"
-            "zstd"
-          ]
-        ) lib.types.str;
+        type = lib.types.either (lib.types.enum [
+          "842"
+          "lzo"
+          "lzo-rle"
+          "lz4"
+          "lz4hc"
+          "zstd"
+        ]) lib.types.str;
         default = "zstd";
         description = "Compression algorithm (`zstd` = good ratio and fast).";
       };
@@ -56,12 +54,15 @@ mkDotsModule {
       };
     };
 
-  toConfig =
-    _: cfg:
-    {
-      zramSwap = {
-        enable = true;
-        inherit (cfg) memoryPercent priority algorithm writebackDevice;
-      };
+  toConfig = _: cfg: {
+    zramSwap = {
+      enable = true;
+      inherit (cfg)
+        memoryPercent
+        priority
+        algorithm
+        writebackDevice
+        ;
     };
+  };
 }

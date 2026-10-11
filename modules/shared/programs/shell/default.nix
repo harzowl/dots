@@ -1,4 +1,10 @@
-{ target, root ? [ "dots" target ] }:
+{
+  target,
+  root ? [
+    "dots"
+    target
+  ],
+}:
 {
   imports = [
     (import ./fish { inherit target root; })
