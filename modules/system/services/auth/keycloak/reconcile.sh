@@ -48,4 +48,9 @@ for u in @REALM_ADMINS@; do
   kcadm add-roles -r "${REALM}" --uusername "$u" --cclientid realm-management --rolename realm-admin || true
 done
 
+# Mark the declared required actions as defaults, so every new user gets them.
+for a in @DEFAULT_REQUIRED_ACTIONS@; do
+  kcadm update "authentication/required-actions/$a" -r "${REALM}" -s defaultAction=true || true
+done
+
 exit 0

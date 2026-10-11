@@ -82,10 +82,16 @@ mkDotsModule {
       hostname = if cfg.hostname != null then cfg.hostname else "auth.${domain}";
       realm = cfg.realm;
 
-      # `userProfile` is not part of Keycloak's realm representation (the live
-      # realm gets it from the reconcile, below) — keep it out of the imported
-      # JSON so a fresh `--import-realm` never sees an unknown field.
-      realmJson = (pkgs.formats.json { }).generate "realm.json" (lib.removeAttrs realm [ "userProfile" ]);
+      # `userProfile` and `defaultRequiredActions` are not fields of Keycloak's
+      # realm representation (the live realm gets them from the reconcile,
+      # below) — keep them out of the imported JSON so a fresh `--import-realm`
+      # never sees an unknown field.
+      realmJson = (pkgs.formats.json { }).generate "realm.json" (
+        lib.removeAttrs realm [
+          "userProfile"
+          "defaultRequiredActions"
+        ]
+      );
 
       # What `keycloak-reconcile` upserts into the existing realm.
       partialJson = (pkgs.formats.json { }).generate "realm-partial.json" {
@@ -114,6 +120,7 @@ mkDotsModule {
             "@PARTIAL_JSON@"
             "@PROFILE_JSON@"
             "@REALM_ADMINS@"
+            "@DEFAULT_REQUIRED_ACTIONS@"
             "@ENV_FILE@"
             "@CONTAINER@"
           ]
@@ -124,6 +131,7 @@ mkDotsModule {
             (toString partialJson)
             (if profileJson != null then toString profileJson else "")
             (lib.concatStringsSep " " cfg.realmAdmins)
+            (lib.concatStringsSep " " (realm.defaultRequiredActions or [ ]))
             cfg.envFile
             "keycloak"
           ]
