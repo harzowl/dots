@@ -1,19 +1,18 @@
-# Keycloak — the single sign-on provider for the services that need accounts.
+# Keycloak — single sign-on for the services that need accounts.
 #
-# Runs two OCI containers on one host:
+# Runs two OCI containers:
 #
-#   * `keycloak-db` — PostgreSQL, published on loopback only. It uses `trust`
-#     auth (the only reachable peer is the Keycloak container on the same host),
-#     so no database password is stored anywhere.
-#   * `keycloak`   — Keycloak itself, on the host network so it can reach that
-#     loopback database and bind the public port the front proxy targets.
+#   * `keycloak-db` — PostgreSQL, loopback only, `trust` auth (its only peer is
+#     the Keycloak container on the same host), so no DB password is stored.
+#   * `keycloak`   — Keycloak on the host network, so it reaches that loopback
+#     database and binds the public port the front proxy targets.
 #
-# The realm is seeded from `realmFile` on first boot (`--import-realm`); Keycloak
-# substitutes `${VAR}` placeholders in that file from the process environment, so
-# client secrets are passed via `environmentFiles` (e.g. the secretspec env file)
-# and never enter the Nix store. `--optimized` is deliberately NOT used — the
-# stock image is not built for our build-time options (KC_DB, KC_HEALTH_ENABLED),
-# so `start` must run its implicit build.
+# The realm is *generated* by the consumer from the services that declare an
+# `sso` block and passed as `realm` here. It is seeded with `--import-realm` on
+# first boot; `${VAR}` placeholders are resolved from the environment (the
+# secretspec env file), keeping client secrets out of the store. `--optimized`
+# is not used: the stock image is not built for our build-time options, so
+# `start` runs its implicit build.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
@@ -28,11 +27,11 @@ mkDotsModule {
   description = "Keycloak single sign-on (OCI containers)";
 
   options =
-    { lib, ... }:
+    { lib, pkgs, ... }:
     {
-      realmFile = lib.mkOption {
-        type = lib.types.path;
-        description = "Realm-import JSON (seeds the realm on first boot; `\${VAR}` placeholders are resolved from the environment).";
+      realm = lib.mkOption {
+        type = (pkgs.formats.json { }).type;
+        description = "Realm definition (roles + clients). `\${VAR}` placeholders are resolved from the environment.";
       };
 
       hostname = lib.mkOption {
@@ -56,7 +55,7 @@ mkDotsModule {
       environmentFiles = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
-        description = "Dotenv files (e.g. the secretspec env file) providing `KC_BOOTSTRAP_ADMIN_PASSWORD` and the client secrets referenced by the realm.";
+        description = "Dotenv files (e.g. the secretspec env file) providing `KC_BOOTSTRAP_ADMIN_PASSWORD` and the client secrets.";
       };
     };
 
@@ -66,7 +65,8 @@ mkDotsModule {
       inherit (args) lib pkgs;
       domain = args.config.dots.system.core.domain;
       hostname = if cfg.hostname != null then cfg.hostname else "auth.${domain}";
-      realm = builtins.fromJSON (builtins.readFile cfg.realmFile);
+      realm = cfg.realm;
+
       realmJson = (pkgs.formats.json { }).generate "realm.json" realm;
 
       db = {
