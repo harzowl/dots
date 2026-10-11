@@ -1,6 +1,7 @@
 {
   imports = [
     ./access
+    ./auth
     ./dashboard
     ./mail
     ./minecraft
