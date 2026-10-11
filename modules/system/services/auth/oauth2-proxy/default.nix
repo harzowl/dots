@@ -110,5 +110,16 @@ in
       };
 
       networking.firewall.allowedTCPPorts = map (g: g.port) (lib.attrValues enabled);
+
+      # A gate can't start until the IdP answers OIDC discovery, so a Keycloak
+      # (re)start would otherwise kill it for good: disable the start-rate limit
+      # so the unit keeps retrying until the IdP is back.
+      systemd.services = lib.mapAttrs' (
+        name: _:
+        lib.nameValuePair "docker-oauth2-proxy-${name}" {
+          startLimitIntervalSec = 0;
+          serviceConfig.RestartSec = 5;
+        }
+      ) enabled;
     };
 }
