@@ -12,6 +12,7 @@ ADMIN="@ADMIN_USER@"
 PARTIAL="@PARTIAL_JSON@"
 ENV_FILE="@ENV_FILE@"
 CONTAINER="@CONTAINER@"
+PROFILE="@PROFILE_JSON@"
 
 if ! curl -fsS "http://127.0.0.1:${PORT}/realms/master/.well-known/openid-configuration" >/dev/null 2>&1; then
   echo "Keycloak not ready on :${PORT}; the timer will retry."
@@ -34,5 +35,12 @@ kcadm config credentials \
   --user "${ADMIN}" --password "${KC_BOOTSTRAP_ADMIN_PASSWORD}" || exit 0
 
 kcadm create partialImport -r "${REALM}" -f /tmp/partial.json || true
+
+# The declarative user profile: not part of partialImport, and its `${...}` are
+# Keycloak i18n keys — do NOT envsubst it.
+if [ -n "${PROFILE}" ]; then
+  docker exec -i "${CONTAINER}" sh -c 'cat > /tmp/profile.json' < "${PROFILE}" || exit 0
+  kcadm update users/profile -r "${REALM}" -f /tmp/profile.json || true
+fi
 
 exit 0

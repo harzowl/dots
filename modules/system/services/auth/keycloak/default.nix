@@ -84,10 +84,37 @@ mkDotsModule {
         clients = realm.clients or [ ];
       };
 
+      # The realm's declarative user profile (which fields users may self-edit in
+      # the Account Console). `partialImport` does not carry it, so the reconcile
+      # applies it separately with `kcadm update users/profile`. Only generated
+      # when the consumer defines one, so we never wipe a profile with `{}`.
+      userProfile = realm.userProfile or null;
+      profileJson =
+        if userProfile != null then
+          (pkgs.formats.json { }).generate "user-profile.json" userProfile
+        else
+          null;
+
       reconcile =
         lib.replaceStrings
-          [ "@PORT@" "@REALM@" "@ADMIN_USER@" "@PARTIAL_JSON@" "@ENV_FILE@" "@CONTAINER@" ]
-          [ (toString cfg.port) realm.realm cfg.adminUser (toString partialJson) cfg.envFile "keycloak" ]
+          [
+            "@PORT@"
+            "@REALM@"
+            "@ADMIN_USER@"
+            "@PARTIAL_JSON@"
+            "@PROFILE_JSON@"
+            "@ENV_FILE@"
+            "@CONTAINER@"
+          ]
+          [
+            (toString cfg.port)
+            realm.realm
+            cfg.adminUser
+            (toString partialJson)
+            (if profileJson != null then toString profileJson else "")
+            cfg.envFile
+            "keycloak"
+          ]
           (builtins.readFile ./reconcile.sh);
 
       db = {
