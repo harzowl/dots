@@ -198,6 +198,8 @@ mkDotsModule {
             pkgs.curl
             pkgs.gettext
             pkgs.docker
+            pkgs.coreutils
+            pkgs.gnugrep
           ];
           serviceConfig.Type = "oneshot";
           script = reconcile;

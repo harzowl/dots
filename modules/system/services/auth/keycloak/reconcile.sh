@@ -43,14 +43,34 @@ if [ -n "${PROFILE}" ]; then
   kcadm update users/profile -r "${REALM}" -f /tmp/profile.json || true
 fi
 
-# Idempotently give the declared users full administration of this realm.
-for u in @REALM_ADMINS@; do
-  kcadm add-roles -r "${REALM}" --uusername "$u" --cclientid realm-management --rolename realm-admin || true
+# Authoritative: `realm-admin` is held by exactly the declared users — grant the
+# declared, revoke anyone else — so removing a name actually removes the role.
+declared_admins="@REALM_ADMINS@"
+for u in $(kcadm get users -r "${REALM}" --fields username --format csv 2>/dev/null | tr -d '"\r'); do
+  if kcadm get-roles -r "${REALM}" --uusername "$u" --cclientid realm-management 2>/dev/null | grep -q realm-admin; then
+    has=yes
+  else
+    has=no
+  fi
+  case " ${declared_admins} " in
+    *" ${u} "*)
+      [ "${has}" = yes ] || kcadm add-roles -r "${REALM}" --uusername "$u" --cclientid realm-management --rolename realm-admin || true
+      ;;
+    *)
+      [ "${has}" = no ] || kcadm remove-roles -r "${REALM}" --uusername "$u" --cclientid realm-management --rolename realm-admin || true
+      ;;
+  esac
 done
 
-# Mark the declared required actions as defaults, so every new user gets them.
-for a in @DEFAULT_REQUIRED_ACTIONS@; do
-  kcadm update "authentication/required-actions/$a" -r "${REALM}" -s defaultAction=true || true
+# Authoritative: a required action is a default exactly when it is declared, so
+# removing one from the list turns it back off too.
+declared_actions="@DEFAULT_REQUIRED_ACTIONS@"
+for a in $(kcadm get authentication/required-actions -r "${REALM}" --fields alias --format csv 2>/dev/null | tr -d '"\r'); do
+  case " ${declared_actions} " in
+    *" ${a} "*) on=true ;;
+    *) on=false ;;
+  esac
+  kcadm update "authentication/required-actions/${a}" -r "${REALM}" -s defaultAction="${on}" || true
 done
 
 exit 0
