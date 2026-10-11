@@ -145,21 +145,24 @@ mkDotsModule {
 
         systemd.services.keycloak-reconcile = {
           description = "Reconcile the Keycloak realm";
-          wantedBy = [ "multi-user.target" ];
           after = [ "docker-keycloak.service" ];
-          wants = [ "docker-keycloak.service" ];
           path = [
             pkgs.curl
             pkgs.gettext
             pkgs.docker
           ];
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            Restart = "on-failure";
-            RestartSec = 30;
-          };
+          serviceConfig.Type = "oneshot";
           script = reconcile;
+        };
+
+        # Runs once at activation and, because Keycloak's first boot builds for
+        # minutes, keeps retrying until the server answers.
+        systemd.timers.keycloak-reconcile = {
+          wantedBy = [ "timers.target" ];
+          timerConfig = {
+            OnBootSec = "2min";
+            OnUnitActiveSec = "15min";
+          };
         };
       }
     ];
