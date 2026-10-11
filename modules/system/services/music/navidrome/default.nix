@@ -182,7 +182,7 @@ mkDotsModule {
             if docker exec ${cfg.name} /app/navidrome user list -n 2>/dev/null | cut -d, -f2 | grep -qx '${cfg.admin.username}'; then
               echo "Navidrome admin '${cfg.admin.username}' already exists"
             else
-              pw="$(cat ${toString cfg.adminPasswordFile})"
+              pw="$(cat ${toString cfg.admin.passwordFile})"
               printf '%s\n%s\n' "$pw" "$pw" | script -qec \
                 "docker exec -it ${cfg.name} /app/navidrome user create --username '${cfg.admin.username}' --admin -n" /dev/null
             fi
