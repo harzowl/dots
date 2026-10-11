@@ -23,9 +23,9 @@ set -a
 . "${ENV_FILE}"
 set +a
 
-resolved="$(mktemp)"
-envsubst < "${PARTIAL}" > "${resolved}"
-docker cp "${resolved}" "${CONTAINER}:/tmp/partial.json" || exit 0
+# Feed the resolved JSON in over stdin so it is owned by the container user; a
+# `docker cp` of a mode-0600 temp file is unreadable to kcadm.
+envsubst < "${PARTIAL}" | docker exec -i "${CONTAINER}" sh -c 'cat > /tmp/partial.json' || exit 0
 
 kcadm() { docker exec "${CONTAINER}" /opt/keycloak/bin/kcadm.sh "$@"; }
 
