@@ -51,6 +51,16 @@ mkDotsModule {
                         type = lib.types.str;
                         default = "Services";
                       };
+                      checkUrl = lib.mkOption {
+                        type = lib.types.nullOr lib.types.str;
+                        default = null;
+                        description = ''
+                          URL probed for the monitor status, when it differs from
+                          `url`. Set it to the app's own health endpoint for a
+                          site behind an auth gate, so the check measures the app
+                          rather than the gate's unauthenticated response.
+                        '';
+                      };
                     };
                   }
                 );
@@ -105,7 +115,8 @@ mkDotsModule {
       link =
         s:
         { inherit (s) title url; }
-        // lib.optionalAttrs (s.icon != null) { inherit (s) icon; };
+        // lib.optionalAttrs (s.icon != null) { inherit (s) icon; }
+        // lib.optionalAttrs (s.checkUrl != null) { "check-url" = s.checkUrl; };
 
       page =
         p:
