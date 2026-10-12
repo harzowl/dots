@@ -72,6 +72,19 @@ mkDotsModule {
         example = [ "me@example.com" ];
         description = "Usernames to grant the realm's `realm-admin` client role (full administration of this realm). Applied by the reconcile, so it is idempotent.";
       };
+
+      extraVolumes = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "/nix/store/…-spi.jar:/opt/keycloak/providers/spi.jar:ro" ];
+        description = ''
+          Extra volume mounts for the Keycloak container, appended after the
+          realm-import mount. Bind provider JARs here (at
+          `/opt/keycloak/providers/<name>.jar`); because the container runs a
+          non-optimized `start`, its implicit build picks them up on start, so
+          no image bake is needed.
+        '';
+      };
     };
 
   toConfig =
@@ -124,9 +137,15 @@ mkDotsModule {
           smtpFlags = lib.concatMapStrings (k: "-s 'smtpServer.${k}=${toString smtp.${k}}' ") (
             lib.attrNames smtp
           );
+          # A realm field, so a `partialImport` never carries it and a Keycloak
+          # restart does not re-import an existing realm: without this update the
+          # account theme would only ever apply on the realm's first import.
+          accountThemeFlag = lib.optionalString ((realm.accountTheme or null) != null) (
+            "-s 'accountTheme=${realm.accountTheme}' "
+          );
         in
-        lib.optionalString (displayFlag != "" || smtpFlags != "") (
-          "kcadm update \"realms/\${REALM}\" ${displayFlag}${smtpFlags}|| true"
+        lib.optionalString (displayFlag != "" || smtpFlags != "" || accountThemeFlag != "") (
+          "kcadm update \"realms/\${REALM}\" ${displayFlag}${smtpFlags}${accountThemeFlag}|| true"
         );
 
       reconcile =
@@ -189,7 +208,8 @@ mkDotsModule {
         inherit (cfg) environmentFiles;
         volumes = [
           "${realmJson}:/opt/keycloak/data/import/${realm.realm}-realm.json:ro"
-        ];
+        ]
+        ++ cfg.extraVolumes;
         settings = {
           kcDb = "postgres";
           kcDbUrl = "jdbc:postgresql://127.0.0.1:5432/keycloak";
