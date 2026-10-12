@@ -26,8 +26,6 @@ let
   defaults = {
     name = "subsonic-auth";
     image = "alpine:latest";
-    # Published on the host so the front proxy (over the mesh) can reach it.
-    ports = [ 4184 ];
   };
 in
 mkDotsModule {
@@ -53,10 +51,13 @@ mkDotsModule {
         default = "172.30.0.30";
         description = "Static container IP; this is what Navidrome must trust to set the header.";
       };
-      listenPort = lib.mkOption {
+      port = lib.mkOption {
         type = lib.types.port;
-        default = 8080;
-        description = "Port the shim's HTTP server binds inside the container.";
+        default = 4184;
+        description = ''
+          Port the shim listens on, published 1:1 on the host so the front proxy
+          reaches it. The container's HTTP server binds the same port.
+        '';
       };
       upstream = lib.mkOption {
         type = lib.types.str;
@@ -105,6 +106,8 @@ mkDotsModule {
     in
     mkDockerService.config {
       spec = cfg // {
+        # Listen on the same port that is published 1:1 on the host.
+        ports = [ cfg.port ];
         # Run the store binary directly; alpine has no entrypoint of its own.
         entrypoint = "/usr/local/bin/subsonic-auth";
         volumes = [ "${binary}/bin/subsonic-auth:/usr/local/bin/subsonic-auth:ro" ];
@@ -114,7 +117,7 @@ mkDotsModule {
           cfg.ip
         ];
         settings = {
-          listenAddr = "0.0.0.0:${toString cfg.listenPort}";
+          listenAddr = "0.0.0.0:${toString cfg.port}";
           upstream = cfg.upstream;
           keycloakUrl = cfg.keycloakUrl;
           keycloakRealm = cfg.realm;
