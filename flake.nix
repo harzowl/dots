@@ -43,5 +43,15 @@
 
       # `nix fmt` (and the pre-commit hook) format Nix with nixfmt.
       formatter.x86_64-linux = inputs.nixpkgs.legacyPackages.x86_64-linux.nixfmt;
+
+      # The music.subsonic-auth shim binary. Its `go test` suite runs in
+      # buildGoModule's checkPhase, so `nix build .#subsonic-auth` (and the
+      # `checks` entry below, which `nix flake check` evaluates) is the test gate.
+      packages.x86_64-linux.subsonic-auth =
+        inputs.nixpkgs.legacyPackages.x86_64-linux.callPackage
+          ./modules/system/services/music/subsonic-auth/package.nix
+          { };
+
+      checks.x86_64-linux.subsonic-auth = self.packages.x86_64-linux.subsonic-auth;
     };
 }
