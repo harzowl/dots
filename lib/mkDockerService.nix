@@ -77,6 +77,16 @@
         description = "Command (and args) overriding the image's default.";
       };
 
+      entrypoint = opt "entrypoint" {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Override the image's entrypoint (`--entrypoint`). Useful for running a
+          binary bind-mounted from the store in a stock base image without a
+          custom image build.
+        '';
+      };
+
       extraOptions = opt "extraOptions" {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -151,6 +161,7 @@
               extraOptions
               environmentFiles
               ;
+            entrypoint = spec.entrypoint or null;
             inherit environment;
             ports = map (
               p:
