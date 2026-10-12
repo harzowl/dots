@@ -1,0 +1,36 @@
+# Secret scanning for the dots module library. `nix flake check` runs this plus
+# scripts/secret-scan.py via the `secret-scan` check, and `gitleaks detect`
+# picks this file up directly.
+#
+# gitleaks covers the well-known credential *formats* (cloud keys, provider
+# tokens, private keys, …) with its default rules. The token *shape* that
+# matters most here — a raw, high-entropy Keycloak PAT or HMAC key pasted into
+# a test fixture with no `key`/`secret` keyword to trip those rules — is caught
+# by scripts/secret-scan.py, which also knows the `dummy-DO-NOT-USE-…`
+# placeholder convention. `useDefault` keeps every upstream rule enabled.
+title = "dots secret scan"
+
+[extend]
+useDefault = true
+
+# Ignore the obvious test placeholders and public-key material: a committed
+# fixture must use `dummy-DO-NOT-USE-…` (or a similarly labelled value), never a
+# real one.
+[[allowlists]]
+description = "Public keys and the dummy/placeholder convention"
+paths = [
+  '''.*\.pub$''',
+  '''.*\.patch$''',
+  '''flake\.lock$''',
+  '''secrets\.enc\.yaml$''',
+  '''\.sops\.yaml$''',
+]
+regexTarget = "line"
+regexes = [
+  '''DO-NOT-USE''',
+  '''dummy''',
+  '''placeholder''',
+  '''RESERVED''',
+  '''REDACTED''',
+  '''example''',
+]
