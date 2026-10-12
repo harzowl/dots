@@ -42,6 +42,11 @@ mkDotsModule {
           lib.types.submodule {
             options = {
               name = lib.mkOption { type = lib.types.str; };
+              search = lib.mkOption {
+                type = lib.types.bool;
+                default = true;
+                description = "Render the global search widget on this page.";
+              };
               widgets = lib.mkOption {
                 type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
                 default = [ ];
@@ -143,7 +148,7 @@ mkDotsModule {
           {
             size = "full";
             widgets =
-              lib.optional (cfg.search != null) {
+              lib.optional (cfg.search != null && p.search) {
                 type = "search";
                 "search-engine" = cfg.search;
               }
