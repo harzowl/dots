@@ -42,6 +42,11 @@ mkDotsModule {
           lib.types.submodule {
             options = {
               name = lib.mkOption { type = lib.types.str; };
+              widgets = lib.mkOption {
+                type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
+                default = [ ];
+                description = "Raw Glance widgets appended to the page's full column.";
+              };
               services = lib.mkOption {
                 type = lib.types.listOf (
                   lib.types.submodule {
@@ -142,14 +147,13 @@ mkDotsModule {
                 type = "search";
                 "search-engine" = cfg.search;
               }
-              ++ [
-                {
-                  type = "monitor";
-                  title = "Services";
-                  cache = "1m";
-                  sites = map link p.services;
-                }
-              ];
+              ++ lib.optional (p.services != [ ]) {
+                type = "monitor";
+                title = "Services";
+                cache = "1m";
+                sites = map link p.services;
+              }
+              ++ p.widgets;
           }
         ];
       };
