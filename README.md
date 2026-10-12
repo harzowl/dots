@@ -1,3 +1,39 @@
 # ❄️ dots
 
-Simplified NixOS system/home configuration.
+Simplified NixOS system/home configuration — a module library (`dots.system.*`)
+that consuming hosts compose.
+
+## Adding a service — security checklist
+
+Work through this before a new service or vhost is called done. It encodes the
+invariants in [`AGENTS.md`](./AGENTS.md); the modules below implement them, so
+most of the list is "use the default and don't opt out".
+
+1. **No credential in a URL or query string.** Anything the service hands a
+   client to replay must be **derived and short-lived** — an HMAC-signed,
+   expiry-bearing token minted after the real credential is validated — never
+   the account credential itself. Return the derived token; never the
+   credential it was minted from. (See `services.music.subsonic-auth`.)
+2. **No long-lived secret in a log.** The Caddy module injects a
+   credential-redacting `log` filter — `t`, `s`, `p`, `token`, `code`, `state`
+   and the `Referer` header — into **every** vhost by default
+   (`accessLogFormat`; opt out with `= null`, never a per-service opt-in).
+   Suppress a component's own request log if it can print a query string (e.g.
+   oauth2-proxy's `/oauth2/callback`, via `oauth2ProxyExcludeLoggingPaths`).
+   Verify the generated config, not just that it evaluates.
+3. **Pass secrets in, never bake them in.** Secrets arrive through
+   `environmentFiles`, systemd credentials or a mounted file — never as a module
+   `settings` value (that lands in the Nix store) and never in generated config.
+   Never log a secret.
+4. **Derive, don't persist.** Prefer stateless verification (signature + expiry)
+   over a server-side session store, so a restart cannot resurrect or strand a
+   credential; bound revocation with a short TTL and key rotation.
+5. **Fixtures are dummies.** Any test, mock or example value is obviously fake
+   (`dummy-DO-NOT-USE-…`). Never paste a value from a log, a config, the live
+   system, an env var, or a real account.
+6. **Run the scanner.** `nix flake check` runs `checks.*.secret-scan`
+   (`gitleaks` plus `scripts/secret-scan.py`), which fails on a credential-shaped
+   string in any tracked file, test fixtures included.
+7. **Guard the default.** Add a test or an assertion that the safe behaviour is
+   the default (e.g. every generated vhost has redaction, `/auth/login` never
+   returns the raw credential), so a future change cannot regress it silently.
