@@ -9,10 +9,11 @@
 #     settings = { oauth2ProxyUpstreams = "http://127.0.0.1:8082"; … };
 #   };
 #
-# Gates run on the host network (so they reach the app on the host and are
-# reachable by the front proxy) and `port` is opened in the firewall. The config
-# is host-supplied via `settings` (camelCase becomes `OAUTH2_PROXY_*`), and the
-# client/cookie secrets arrive as `OAUTH2_PROXY_CLIENT_SECRET` /
+# Gates default to the host network (so they reach the app on the host and are
+# reachable by the front proxy) and `port` is opened in the firewall; set
+# `network` + `ip` to run a gate on a user-defined network with a static address.
+# The config is host-supplied via `settings` (camelCase becomes `OAUTH2_PROXY_*`),
+# and the client/cookie secrets arrive as `OAUTH2_PROXY_CLIENT_SECRET` /
 # `OAUTH2_PROXY_COOKIE_SECRET` from an env file (the secretspec env file).
 { config, lib, ... }:
 let
@@ -27,6 +28,24 @@ let
         type = lib.types.port;
         default = 4180;
         description = "Port oauth2-proxy listens on (opened in the firewall).";
+      };
+      network = lib.mkOption {
+        type = lib.types.str;
+        default = "host";
+        description = ''
+          Docker network the gate runs on. Default `"host"` (reaches the app on
+          `127.0.0.1` and is reachable by the front proxy). Set a user-defined
+          network to give the gate a container IP — the app can then trust that
+          IP as the only source allowed to set the auth header.
+        '';
+      };
+      ip = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Static IPv4 to assign when `network` is a user-defined network (passed
+          as `--ip`). Lets the upstream trust a single address.
+        '';
       };
       ports = lib.mkOption {
         type = lib.types.listOf (lib.types.either lib.types.port lib.types.str);
@@ -93,7 +112,13 @@ in
           cmd
           environmentFiles
           ;
-        extraOptions = [ "--network=host" ];
+        extraOptions = [
+          "--network=${g.network}"
+        ]
+        ++ lib.optional (g.ip != null) [
+          "--ip"
+          g.ip
+        ];
         environment = lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) (
           { oauth2ProxyHttpAddress = "0.0.0.0:${toString g.port}"; } // g.settings
         );
