@@ -31,6 +31,26 @@ mkDotsModule {
         description = "`search-engine`: a built-in name or a URL with `{QUERY}`.";
       };
 
+      package = lib.mkOption {
+        type = lib.types.nullOr lib.types.package;
+        default = null;
+        description = ''
+          Glance build to run instead of the upstream OCI image. It is packaged
+          into a container image on the host, so use it for a local build — e.g.
+          a patched Glance with per-site `tags` support.
+        '';
+      };
+
+      patched = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Run the bundled patched Glance, which adds per-site `tags` to the
+          monitor widget, instead of the upstream image. Ignored when `package`
+          is set.
+        '';
+      };
+
       branding = lib.mkOption {
         type = lib.types.attrsOf lib.types.anything;
         default = { };
@@ -75,6 +95,22 @@ mkDotsModule {
                           `url`. Set it to the app's own health endpoint for a
                           site behind an auth gate, so the check measures the app
                           rather than the gate's unauthenticated response.
+                        '';
+                      };
+                      tags = lib.mkOption {
+                        type = lib.types.listOf (
+                          lib.types.submodule {
+                            options = {
+                              title = lib.mkOption { type = lib.types.str; };
+                              url = lib.mkOption { type = lib.types.str; };
+                            };
+                          }
+                        );
+                        default = [ ];
+                        description = ''
+                          Links rendered after the site's status line, e.g. how
+                          the service is authorized. Needs the patched Glance
+                          (`patched` or `package`).
                         '';
                       };
                     };
@@ -133,6 +169,49 @@ mkDotsModule {
     let
       lib = args.lib;
       pkgs = args.pkgs;
+      pkgsUnstable = args.pkgsUnstable;
+
+      # The bundled patch adds a per-site `tags` list to the monitor widget.
+      patchedGlance = pkgsUnstable.glance.overrideAttrs (old: {
+        patches = (old.patches or [ ]) ++ [ ./patches/monitor-tags.patch ];
+      });
+
+      glancePackage =
+        if cfg.package != null then
+          cfg.package
+        else if cfg.patched then
+          patchedGlance
+        else
+          null;
+
+      # A local build runs from a Nix-built image loaded into the backend,
+      # instead of the upstream image; `image` must match the loaded tag.
+      imageName = "${cfg.name}-patched";
+      imageTag = if glancePackage == null then null else glancePackage.version or "latest";
+      containerImage =
+        if glancePackage == null then
+          null
+        else
+          pkgs.dockerTools.buildLayeredImage {
+            name = imageName;
+            tag = imageTag;
+            # HTTPS monitor checks need the CA bundle.
+            contents = [ pkgs.cacert ];
+            config = {
+              Entrypoint = [
+                "${glancePackage}/bin/glance"
+                "--config"
+                "/app/config/glance.yml"
+              ];
+              WorkingDir = "/app";
+              Env = [ "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt" ];
+              ExposedPorts = {
+                "8080/tcp" = { };
+              };
+            };
+          };
+
+      image = if glancePackage == null then cfg.image else "${imageName}:${imageTag}";
 
       link =
         s:
@@ -140,7 +219,8 @@ mkDotsModule {
           inherit (s) title url;
         }
         // lib.optionalAttrs (s.icon != null) { inherit (s) icon; }
-        // lib.optionalAttrs (s.checkUrl != null) { "check-url" = s.checkUrl; };
+        // lib.optionalAttrs (s.checkUrl != null) { "check-url" = s.checkUrl; }
+        // lib.optionalAttrs (s.tags != [ ]) { inherit (s) tags; };
 
       page = p: {
         name = p.name;
@@ -198,11 +278,16 @@ mkDotsModule {
         // lib.optionalAttrs themeWanted { theme = theme; }
       );
     in
-    (mkDockerService.config {
-      spec = cfg // {
-        volumes = cfg.volumes ++ [ "${config}:/app/config/glance.yml:ro" ];
-      };
-      inherit defaults;
-    })
-      args;
+    lib.mkMerge [
+      (mkDockerService.config {
+        spec = cfg // {
+          inherit image;
+          volumes = cfg.volumes ++ [ "${config}:/app/config/glance.yml:ro" ];
+        };
+        inherit defaults;
+      } args)
+      (lib.mkIf (containerImage != null) {
+        virtualisation.oci-containers.containers.${cfg.name}.imageFile = containerImage;
+      })
+    ];
 }

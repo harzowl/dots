@@ -1,0 +1,75 @@
+diff --git a/internal/glance/static/css/widget-monitor.css b/internal/glance/static/css/widget-monitor.css
+index 8bc629b..652ce9b 100644
+--- a/internal/glance/static/css/widget-monitor.css
++++ b/internal/glance/static/css/widget-monitor.css
+@@ -34,3 +34,15 @@
+     height: 1.8rem;
+     flex-shrink: 0;
+ }
++
++.monitor-site-tag {
++    color: var(--color-text-base);
++    text-decoration: underline;
++    text-decoration-color: var(--color-text-subdue);
++    text-underline-offset: 0.25em;
++}
++
++.monitor-site-tag:hover {
++    color: var(--color-text-highlight);
++    text-decoration-color: currentColor;
++}
+diff --git a/internal/glance/templates/monitor.html b/internal/glance/templates/monitor.html
+index cbdcbae..63ad5f1 100644
+--- a/internal/glance/templates/monitor.html
++++ b/internal/glance/templates/monitor.html
+@@ -35,6 +35,9 @@
+         {{ else }}
+         <li class="color-negative" title="{{ .Status.Error }}">ERROR</li>
+         {{ end }}
++        {{ range .Tags }}
++        <li><a class="monitor-site-tag" href="{{ .URL | safeURL }}">{{ .Title }}</a></li>
++        {{ end }}
+     </ul>
+ </div>
+ {{ if eq .StatusStyle "ok" }}
+diff --git a/internal/glance/widget-monitor.go b/internal/glance/widget-monitor.go
+index cdce0d6..97e3190 100644
+--- a/internal/glance/widget-monitor.go
++++ b/internal/glance/widget-monitor.go
+@@ -19,21 +19,27 @@ type monitorWidget struct {
+ 	widgetBase `yaml:",inline"`
+ 	Sites      []struct {
+ 		*SiteStatusRequest `yaml:",inline"`
+-		Status             *siteStatus     `yaml:"-"`
+-		URL                string          `yaml:"-"`
+-		ErrorURL           string          `yaml:"error-url"`
+-		Title              string          `yaml:"title"`
+-		Icon               customIconField `yaml:"icon"`
+-		SameTab            bool            `yaml:"same-tab"`
+-		StatusText         string          `yaml:"-"`
+-		StatusStyle        string          `yaml:"-"`
+-		AltStatusCodes     []int           `yaml:"alt-status-codes"`
++		Status             *siteStatus      `yaml:"-"`
++		URL                string           `yaml:"-"`
++		ErrorURL           string           `yaml:"error-url"`
++		Title              string           `yaml:"title"`
++		Icon               customIconField  `yaml:"icon"`
++		SameTab            bool             `yaml:"same-tab"`
++		StatusText         string           `yaml:"-"`
++		StatusStyle        string           `yaml:"-"`
++		AltStatusCodes     []int            `yaml:"alt-status-codes"`
++		Tags               []monitorSiteTag `yaml:"tags"`
+ 	} `yaml:"sites"`
+ 	Style           string `yaml:"style"`
+ 	ShowFailingOnly bool   `yaml:"show-failing-only"`
+ 	HasFailing      bool   `yaml:"-"`
+ }
+ 
++type monitorSiteTag struct {
++	Title string `yaml:"title"`
++	URL   string `yaml:"url"`
++}
++
+ func (widget *monitorWidget) initialize() error {
+ 	widget.withTitle("Monitor").withCacheDuration(5 * time.Minute)
+ 
