@@ -72,6 +72,38 @@ mkDotsModule {
                 default = [ ];
                 description = "Raw Glance widgets appended to the page's full column.";
               };
+              headWidgets = lib.mkOption {
+                type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
+                default = [ ];
+                description = ''
+                  Raw Glance widgets (an attrset each) rendered full-width above
+                  the page's columns (`head-widgets`).
+                '';
+              };
+              columns = lib.mkOption {
+                type = lib.types.listOf (
+                  lib.types.submodule {
+                    options = {
+                      size = lib.mkOption {
+                        type = lib.types.str;
+                        default = "full";
+                        description = "Column width: `full` or `small`.";
+                      };
+                      widgets = lib.mkOption {
+                        type = lib.types.listOf (lib.types.attrsOf lib.types.anything);
+                        default = [ ];
+                        description = "Raw Glance widgets (an attrset each) in this column.";
+                      };
+                    };
+                  }
+                );
+                default = [ ];
+                description = ''
+                  Explicit page columns (`columns`). When set it replaces the
+                  default single `full` column built from `search`, `services`
+                  and `widgets`; a page allows 1–2 `full` columns (plus `small`).
+                '';
+              };
               services = lib.mkOption {
                 type = lib.types.listOf (
                   lib.types.submodule {
@@ -222,26 +254,33 @@ mkDotsModule {
         // lib.optionalAttrs (s.checkUrl != null) { "check-url" = s.checkUrl; }
         // lib.optionalAttrs (s.tags != [ ]) { inherit (s) tags; };
 
-      page = p: {
-        name = p.name;
-        columns = [
-          {
-            size = "full";
-            widgets =
-              lib.optional (cfg.search != null && p.search) {
-                type = "search";
-                "search-engine" = cfg.search;
-              }
-              ++ lib.optional (p.services != [ ]) {
-                type = "monitor";
-                title = "Services";
-                cache = "1m";
-                sites = map link p.services;
-              }
-              ++ p.widgets;
-          }
-        ];
-      };
+      page =
+        p:
+        {
+          name = p.name;
+          columns =
+            if p.columns != [ ] then
+              p.columns
+            else
+              [
+                {
+                  size = "full";
+                  widgets =
+                    lib.optional (cfg.search != null && p.search) {
+                      type = "search";
+                      "search-engine" = cfg.search;
+                    }
+                    ++ lib.optional (p.services != [ ]) {
+                      type = "monitor";
+                      title = "Services";
+                      cache = "1m";
+                      sites = map link p.services;
+                    }
+                    ++ p.widgets;
+                }
+              ];
+        }
+        // lib.optionalAttrs (p.headWidgets != [ ]) { head-widgets = p.headWidgets; };
 
       # Presets offered in the picker: the built-ins (if enabled) plus any extras.
       presets = (lib.optionalAttrs cfg.theme.allThemes builtinThemes) // cfg.theme.presets;
