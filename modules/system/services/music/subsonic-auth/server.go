@@ -27,12 +27,26 @@ const (
 // own database, so this shim answers it instead, using the Keycloak PAT.
 const loginPath = "/auth/login"
 
+// shareImagePath is Navidrome's *public* artist/album-art endpoint:
+// `/share/img/<signed-token>`. Navidrome authorises the request by the token in
+// the path, so it needs no client credential — and the shim must let it through
+// unauthenticated, or a native client (which edge routes to the shim) gets a 401
+// and cover art never renders. Only this exact prefix is opened; the other
+// `/share/*` share endpoints stay credential-required.
+const shareImagePath = "/share/img"
+
+// isPublicImagePath reports whether a request path is Navidrome's public image
+// endpoint (or a child of it).
+func isPublicImagePath(p string) bool {
+	return p == shareImagePath || strings.HasPrefix(p, shareImagePath+"/")
+}
+
 // server authenticates a native client's credential against Keycloak and, on
 // success, proxies to Navidrome with a single trusted identity header.
 type server struct {
 	identityHeader string
 	cache          *credCache
-	sessions       *sessionCache
+	signer         *tokenSigner
 	validator      *validator
 	reverseProxy   *httputil.ReverseProxy
 }
@@ -40,7 +54,7 @@ type server struct {
 type serverDeps struct {
 	identityHeader string
 	cache          *credCache
-	sessions       *sessionCache
+	signer         *tokenSigner
 	validator      *validator
 	upstream       *url.URL
 }
@@ -52,7 +66,7 @@ func newServer(d serverDeps) *server {
 	return &server{
 		identityHeader: d.identityHeader,
 		cache:          d.cache,
-		sessions:       d.sessions,
+		signer:         d.signer,
 		validator:      d.validator,
 		reverseProxy:   rp,
 	}
@@ -77,6 +91,14 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Navidrome's public cover-art endpoint: pass it through with no credential
+	// (Navidrome authorises it by the token in the path). A native client reaches
+	// this shim for every `/share*` path, so without this branch cover art 401s.
+	if isPublicImagePath(r.URL.Path) {
+		s.proxyAnonymous(w, r)
+		return
+	}
+
 	// Explicit password credentials: HTTP Basic, or the Subsonic `u`/`p`
 	// parameters (a Keycloak PAT, plaintext or `enc:<hex>`).
 	if user, token, st := extractCredential(r, form); st == credOK {
@@ -89,33 +111,30 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// `X-Nd-Authorization` carries the opaque session token /auth/login minted
-	// for the native `/api/*` client. The client re-logs-in when it expires.
+	// `X-Nd-Authorization` carries the signed token /auth/login mints for the
+	// native `/api/*` client; it is verified statelessly, so it survives a
+	// restart until it expires, then the client re-logs-in with its saved PAT.
 	if token := bearerToken(r.Header.Get(ndAuthHeader)); token != "" {
-		identity, ok := s.sessions.get(token)
-		if !ok {
-			s.deny(w, r, subsonicErrorTokenUnsupported, "invalid or expired session token")
+		identity, err := s.signer.Verify(token, "")
+		if err != nil {
+			s.deny(w, r, subsonicErrorTokenUnsupported, "invalid or expired token")
 			return
 		}
 		s.proxy(w, r, identity, form)
 		return
 	}
 
-	// The Subsonic `t` parameter is the credential /auth/login hands back for
-	// `/rest` — the PAT itself, not a session token, so it keeps working across
-	// a shim restart. A session token is still accepted first for compatibility.
+	// The Subsonic `t` parameter is the signed token /auth/login hands back
+	// (`subsonicToken`); it is verified against `u` so a token only ever
+	// authenticates the identity it was minted for.
 	if token := param(r, form, "t"); token != "" {
-		if identity, ok := s.sessions.get(token); ok {
-			s.proxy(w, r, identity, form)
+		user := param(r, form, "u")
+		identity, err := s.signer.Verify(token, user)
+		if err != nil {
+			s.deny(w, r, subsonicErrorWrongCredentials, "invalid or expired token")
 			return
 		}
-		if user := param(r, form, "u"); user != "" {
-			if identity, ok := s.validatePAT(r.Context(), user, token); ok {
-				s.proxy(w, r, identity, form)
-				return
-			}
-		}
-		s.deny(w, r, subsonicErrorWrongCredentials, "invalid or expired personal access token")
+		s.proxy(w, r, identity, form)
 		return
 	}
 
@@ -152,9 +171,9 @@ func readFormBody(r *http.Request) (url.Values, error) {
 
 // loginRequest and loginResponse mirror the JSON shapes Navidrome's
 // /auth/login uses, so Feishin's "Navidrome" server type parses them unchanged.
-// `subsonicToken` is returned as the PAT so Feishin's `/rest` credential stays
-// valid across a shim restart (sessions live only in memory); `token` is the
-// opaque session for the native `/api/*` client, which re-logs-in on expiry.
+// `subsonicToken` and `token` are both a short-lived *signed* token minted here
+// after the PAT is validated — never the PAT itself, so the credential the
+// client replays on `/rest` and `/api` is derived and expiry-bounded.
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -183,7 +202,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := randomHex(32)
+	token, err := s.signer.Sign(identity)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -193,13 +212,12 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	s.sessions.set(token, identity)
 	s.writeJSON(w, http.StatusOK, loginResponse{
 		ID:            identity,
 		Name:          identity,
 		Username:      identity,
 		SubsonicSalt:  salt,
-		SubsonicToken: req.Password,
+		SubsonicToken: token,
 		Token:         token,
 	})
 }
@@ -227,7 +245,6 @@ func (s *server) proxy(w http.ResponseWriter, r *http.Request, identity string, 
 	scrubIdentityHeaders(r.Header)
 	r.Header.Set(s.identityHeader, identity)
 	stripSubsonicCreds(r.URL)
-
 	// A `formPost` credential lives in the body, so drop it there too before
 	// re-encoding, keeping the token out of the upstream's logs.
 	if form != nil {
@@ -240,6 +257,18 @@ func (s *server) proxy(w http.ResponseWriter, r *http.Request, identity string, 
 		r.Header.Set("Content-Length", strconv.Itoa(len(buf)))
 	}
 
+	s.reverseProxy.ServeHTTP(w, r)
+}
+
+// proxyAnonymous forwards a public request (Navidrome's `/share/img/<token>`
+// cover art) without requiring or setting any identity: Navidrome authorises it
+// by the signed token in the path. Client-supplied identity and credential
+// headers are still stripped, so the public path cannot be used to spoof one.
+func (s *server) proxyAnonymous(w http.ResponseWriter, r *http.Request) {
+	r.Header.Del("Authorization")
+	r.Header.Del(ndAuthHeader)
+	scrubIdentityHeaders(r.Header)
+	stripSubsonicCreds(r.URL)
 	s.reverseProxy.ServeHTTP(w, r)
 }
 

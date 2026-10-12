@@ -18,8 +18,8 @@ const (
 	credNone
 )
 
-// ndAuthHeader carries the opaque session token Feishin's "Navidrome" server
-// type stores after a successful /auth/login and replays on /api/*.
+// ndAuthHeader carries the signed token Feishin's "Navidrome" server type
+// stores after a successful /auth/login and replays on /api/*.
 const ndAuthHeader = "X-Nd-Authorization"
 
 // identityHeaders are the headers a client might use to impersonate the
@@ -154,62 +154,5 @@ func (c *credCache) pruneLocked() {
 	if len(c.m) >= c.max {
 		// Still full: drop everything rather than grow without bound.
 		c.m = make(map[[32]byte]cacheEntry)
-	}
-}
-
-// sessionCache maps opaque session tokens (from /auth/login) to the Keycloak
-// identity they authenticated. It is in-memory and TTL-bounded, so a shim
-// restart drops every session and clients re-login with their saved PAT.
-type sessionCache struct {
-	mu  sync.Mutex
-	m   map[string]sessionEntry
-	ttl time.Duration
-	max int
-}
-
-type sessionEntry struct {
-	identity string
-	expires  time.Time
-}
-
-func newSessionCache(ttl time.Duration, max int) *sessionCache {
-	if max < 1 {
-		max = 1
-	}
-	return &sessionCache{m: make(map[string]sessionEntry), ttl: ttl, max: max}
-}
-
-func (c *sessionCache) get(token string) (string, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	e, ok := c.m[token]
-	if !ok {
-		return "", false
-	}
-	if time.Now().After(e.expires) {
-		delete(c.m, token)
-		return "", false
-	}
-	return e.identity, true
-}
-
-func (c *sessionCache) set(token, identity string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if len(c.m) >= c.max {
-		c.pruneLocked()
-	}
-	c.m[token] = sessionEntry{identity: identity, expires: time.Now().Add(c.ttl)}
-}
-
-func (c *sessionCache) pruneLocked() {
-	now := time.Now()
-	for k, e := range c.m {
-		if now.After(e.expires) {
-			delete(c.m, k)
-		}
-	}
-	if len(c.m) >= c.max {
-		c.m = make(map[string]sessionEntry)
 	}
 }

@@ -12,7 +12,10 @@ import (
 )
 
 func main() {
-	cfg := loadConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		log.Fatalf("subsonic-auth: %v", err)
+	}
 
 	upstream, err := url.Parse(cfg.upstream)
 	if err != nil {
@@ -22,11 +25,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid KEYCLOAK_URL %q: %v", cfg.keycloakURL, err)
 	}
+	signer, err := newTokenSigner(cfg.tokenKid, cfg.tokenKeys, cfg.tokenTTL, cfg.tokenAud)
+	if err != nil {
+		log.Fatalf("invalid subsonic token signing key: %v", err)
+	}
 
 	srv := newServer(serverDeps{
 		identityHeader: cfg.identityHeader,
 		cache:          newCredCache(cfg.cacheTTL, cfg.cacheSize),
-		sessions:       newSessionCache(cfg.sessionTTL, cfg.cacheSize),
+		signer:         signer,
 		validator:      v,
 		upstream:       upstream,
 	})
@@ -36,7 +43,7 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	log.Printf("subsonic-auth: %s -> %s (keycloak %s realm %s)",
-		cfg.listenAddr, cfg.upstream, cfg.keycloakURL, cfg.realm)
+	log.Printf("subsonic-auth: %s -> %s (keycloak %s realm %s, token kid %s ttl %s)",
+		cfg.listenAddr, cfg.upstream, cfg.keycloakURL, cfg.realm, cfg.tokenKid, cfg.tokenTTL)
 	log.Fatal(httpServer.ListenAndServe())
 }

@@ -10,8 +10,7 @@
 # proxies to Navidrome with a single trusted identity header.
 #
 # A raw `t`/`s` (md5) credential cannot be checked against a PAT and is
-# rejected, but `t` may carry a PAT directly (that is what `/auth/login` hands
-# back, below). Positive validations are cached briefly (keyed by the sha256 of
+# rejected. Positive validations are cached briefly (keyed by the sha256 of
 # `user\x00token`; the plaintext is never stored) so polling/streaming does not
 # hit Keycloak per request.
 #
@@ -19,13 +18,12 @@
 # "Navidrome" server type does `POST /auth/login` and then sends
 # `X-Nd-Authorization: Bearer <token>` on `/api/*` (and `t=<token>` on `/rest`)
 # — cannot use a PAT as a Navidrome password. The shim answers `/auth/login`
-# itself, validating the JSON body's password as a Keycloak PAT, and returns
-# both: `subsonicToken` is the PAT, so Feishin's `/rest` credential keeps
-# working across a shim restart; `token` is an opaque session the client
-# replays on `/api/*`. Sessions live in an in-memory TTL cache, so the `/api`
-# client re-logs-in with its saved PAT when one expires, while `/rest` requests
-# resolve `t` as a session first and otherwise re-validate it as a PAT against
-# Keycloak using the request's `u`.
+# itself, validating the JSON body's password as a Keycloak PAT, and returns a
+# short-lived **signed** token as both `subsonicToken` and `token`. The raw PAT
+# is never handed back, so it cannot leak through a URL, a client store or a log
+# line; the signed token is stateless (it survives a shim restart until it
+# expires) and is bound to the identity and an audience. The signing key comes
+# from `environmentFiles` (the secretspec env file), never from `settings`.
 #
 # The container runs the statically linked binary bind-mounted into a stock
 # `alpine` image (no custom image build). It joins a user-defined network with a
@@ -104,14 +102,28 @@ mkDotsModule {
         default = 4096;
         description = "Maximum number of cached validations (bounded).";
       };
-      sessionTtl = lib.mkOption {
+      tokenKid = lib.mkOption {
         type = lib.types.str;
-        default = "12h";
+        default = "1";
         description = ''
-          Go duration a /auth/login session token stays valid. Sessions live in
-          memory only, so a restart drops them and the client re-logs-in with
-          its saved PAT.
+          Key id (`kid`) of the active token-signing key. To rotate, deploy a new
+          key under a new `kid` and set `SUBSONIC_TOKEN_KEY_PREVIOUS` /
+          `SUBSONIC_TOKEN_KID_PREVIOUS` to the old one until its tokens expire.
         '';
+      };
+      tokenTtl = lib.mkOption {
+        type = lib.types.str;
+        default = "7d";
+        description = ''
+          Lifetime of a signed subsonic token (a Go duration, or a `Nd` day
+          count). Clients cache it and re-login when it expires, so keep it
+          short — it is what bounds a leaked token, since the shim is stateless.
+        '';
+      };
+      tokenAud = lib.mkOption {
+        type = lib.types.str;
+        default = "subsonic";
+        description = "Audience bound into signed tokens and checked on verify.";
       };
       validateTimeout = lib.mkOption {
         type = lib.types.str;
@@ -146,7 +158,11 @@ mkDotsModule {
           identityHeader = cfg.identityHeader;
           cacheTtl = cfg.cacheTtl;
           cacheSize = cfg.cacheSize;
-          sessionTtl = cfg.sessionTtl;
+          # The signing key (SUBSONIC_TOKEN_KEY) is NOT here — it comes from
+          # `environmentFiles` so it never enters the Nix store.
+          subsonicTokenKid = cfg.tokenKid;
+          subsonicTokenTtl = cfg.tokenTtl;
+          subsonicTokenAud = cfg.tokenAud;
           validateTimeout = cfg.validateTimeout;
         };
       };
