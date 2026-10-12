@@ -31,6 +31,12 @@ mkDotsModule {
         description = "`search-engine`: a built-in name or a URL with `{QUERY}`.";
       };
 
+      branding = lib.mkOption {
+        type = lib.types.attrsOf lib.types.anything;
+        default = { };
+        description = "Glance's top-level `branding` block, e.g. `app-name` / `logo-text`.";
+      };
+
       pages = lib.mkOption {
         type = lib.types.listOf (
           lib.types.submodule {
@@ -166,7 +172,11 @@ mkDotsModule {
         || cfg.theme.disablePicker;
 
       config = (pkgs.formats.yaml { }).generate "glance.yml" (
-        { pages = map page cfg.pages; } // lib.optionalAttrs themeWanted { theme = theme; }
+        {
+          pages = map page cfg.pages;
+        }
+        // lib.optionalAttrs (cfg.branding != { }) { inherit (cfg) branding; }
+        // lib.optionalAttrs themeWanted { theme = theme; }
       );
     in
     (mkDockerService.config {
