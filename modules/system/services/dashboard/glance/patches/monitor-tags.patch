@@ -33,31 +33,13 @@ index cbdcbae..63ad5f1 100644
  </div>
  {{ if eq .StatusStyle "ok" }}
 diff --git a/internal/glance/widget-monitor.go b/internal/glance/widget-monitor.go
-index cdce0d6..97e3190 100644
+index cdce0d6..ba61f43 100644
 --- a/internal/glance/widget-monitor.go
 +++ b/internal/glance/widget-monitor.go
-@@ -19,21 +19,27 @@ type monitorWidget struct {
- 	widgetBase `yaml:",inline"`
- 	Sites      []struct {
- 		*SiteStatusRequest `yaml:",inline"`
--		Status             *siteStatus     `yaml:"-"`
--		URL                string          `yaml:"-"`
--		ErrorURL           string          `yaml:"error-url"`
--		Title              string          `yaml:"title"`
--		Icon               customIconField `yaml:"icon"`
--		SameTab            bool            `yaml:"same-tab"`
--		StatusText         string          `yaml:"-"`
--		StatusStyle        string          `yaml:"-"`
--		AltStatusCodes     []int           `yaml:"alt-status-codes"`
-+		Status             *siteStatus      `yaml:"-"`
-+		URL                string           `yaml:"-"`
-+		ErrorURL           string           `yaml:"error-url"`
-+		Title              string           `yaml:"title"`
-+		Icon               customIconField  `yaml:"icon"`
-+		SameTab            bool             `yaml:"same-tab"`
-+		StatusText         string           `yaml:"-"`
-+		StatusStyle        string           `yaml:"-"`
-+		AltStatusCodes     []int            `yaml:"alt-status-codes"`
+@@ -28,12 +28,18 @@ type monitorWidget struct {
+ 		StatusText         string          `yaml:"-"`
+ 		StatusStyle        string          `yaml:"-"`
+ 		AltStatusCodes     []int           `yaml:"alt-status-codes"`
 +		Tags               []monitorSiteTag `yaml:"tags"`
  	} `yaml:"sites"`
  	Style           string `yaml:"style"`

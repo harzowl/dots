@@ -1,0 +1,41 @@
+diff --git a/internal/glance/static/css/widget-monitor.css b/internal/glance/static/css/widget-monitor.css
+index 8bc629b..3d31437 100644
+--- a/internal/glance/static/css/widget-monitor.css
++++ b/internal/glance/static/css/widget-monitor.css
+@@ -14,6 +14,10 @@
+     opacity: 0.7;
+ }
+ 
++.monitor-site-description {
++    color: var(--color-text-subdue);
++}
++
+ .monitor-site:hover .monitor-site-icon {
+     opacity: 1;
+ }
+diff --git a/internal/glance/templates/monitor.html b/internal/glance/templates/monitor.html
+index cbdcbae..e8d217c 100644
+--- a/internal/glance/templates/monitor.html
++++ b/internal/glance/templates/monitor.html
+@@ -26,6 +26,9 @@
+ {{ end }}
+ <div class="grow min-width-0">
+     <a class="size-h3 color-highlight text-truncate block" href="{{ .URL | safeURL }}" {{ if not .SameTab }}target="_blank"{{ end }} rel="noreferrer">{{ .Title }}</a>
++    {{ if .Description }}
++    <div class="monitor-site-description text-truncate">{{ .Description }}</div>
++    {{ end }}
+     <ul class="list-horizontal-text">
+         {{ if not .Status.Error }}
+         <li title="{{ .Status.Code }}">{{ .StatusText }}</li>
+diff --git a/internal/glance/widget-monitor.go b/internal/glance/widget-monitor.go
+index cdce0d6..b10f15c 100644
+--- a/internal/glance/widget-monitor.go
++++ b/internal/glance/widget-monitor.go
+@@ -23,6 +23,7 @@ type monitorWidget struct {
+ 		URL                string          `yaml:"-"`
+ 		ErrorURL           string          `yaml:"error-url"`
+ 		Title              string          `yaml:"title"`
++		Description        string          `yaml:"description"`
+ 		Icon               customIconField `yaml:"icon"`
+ 		SameTab            bool            `yaml:"same-tab"`
+ 		StatusText         string          `yaml:"-"`

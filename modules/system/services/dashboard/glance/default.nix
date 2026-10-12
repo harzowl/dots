@@ -36,18 +36,21 @@ mkDotsModule {
         default = null;
         description = ''
           Glance build to run instead of the upstream OCI image. It is packaged
-          into a container image on the host, so use it for a local build — e.g.
-          a patched Glance with per-site `tags` support.
+          into a container image on the host, so use it for a local build.
+          Takes precedence over `patches`.
         '';
       };
 
-      patched = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
+      patches = lib.mkOption {
+        type = lib.types.listOf lib.types.path;
+        default = [ ];
         description = ''
-          Run the bundled patched Glance, which adds per-site `tags` to the
-          monitor widget, instead of the upstream image. Ignored when `package`
-          is set.
+          Patch files applied to the upstream Glance build (nixpkgs-unstable),
+          which is then packaged into a local container image. Use it to add
+          upstream features the widget lacks — e.g. the bundled
+          `patches/monitor-tags.patch` (per-site `tags`) and
+          `patches/monitor-description.patch` (per-site `description`). Ignored
+          when `package` is set.
         '';
       };
 
@@ -109,6 +112,15 @@ mkDotsModule {
                   lib.types.submodule {
                     options = {
                       title = lib.mkOption { type = lib.types.str; };
+                      description = lib.mkOption {
+                        type = lib.types.nullOr lib.types.str;
+                        default = null;
+                        description = ''
+                          A short line rendered under the site's title, e.g.
+                          what the service is. Needs a Glance built with the
+                          description patch (`patches` or `package`).
+                        '';
+                      };
                       url = lib.mkOption { type = lib.types.str; };
                       icon = lib.mkOption {
                         type = lib.types.nullOr lib.types.str;
@@ -141,8 +153,8 @@ mkDotsModule {
                         default = [ ];
                         description = ''
                           Links rendered after the site's status line, e.g. how
-                          the service is authorized. Needs the patched Glance
-                          (`patched` or `package`).
+                          the service is authorized. Needs a Glance built with
+                          the tags patch (`patches` or `package`).
                         '';
                       };
                     };
@@ -203,18 +215,17 @@ mkDotsModule {
       pkgs = args.pkgs;
       pkgsUnstable = args.pkgsUnstable;
 
-      # The bundled patch adds a per-site `tags` list to the monitor widget.
-      patchedGlance = pkgsUnstable.glance.overrideAttrs (old: {
-        patches = (old.patches or [ ]) ++ [ ./patches/monitor-tags.patch ];
-      });
-
-      glancePackage =
-        if cfg.package != null then
-          cfg.package
-        else if cfg.patched then
-          patchedGlance
+      # Applied to the upstream build; the bundled patches add per-site `tags`
+      # and `description` to the monitor widget (upstream has neither).
+      patchedGlance =
+        if cfg.patches != [ ] then
+          pkgsUnstable.glance.overrideAttrs (old: {
+            patches = (old.patches or [ ]) ++ cfg.patches;
+          })
         else
           null;
+
+      glancePackage = if cfg.package != null then cfg.package else patchedGlance;
 
       # A local build runs from a Nix-built image loaded into the backend,
       # instead of the upstream image; `image` must match the loaded tag.
@@ -250,6 +261,7 @@ mkDotsModule {
         {
           inherit (s) title url;
         }
+        // lib.optionalAttrs (s.description != null) { inherit (s) description; }
         // lib.optionalAttrs (s.icon != null) { inherit (s) icon; }
         // lib.optionalAttrs (s.checkUrl != null) { "check-url" = s.checkUrl; }
         // lib.optionalAttrs (s.tags != [ ]) { inherit (s) tags; };
