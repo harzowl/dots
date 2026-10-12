@@ -88,7 +88,7 @@ func TestExtractCredential(t *testing.T) {
 			if tt.header != "" {
 				r.Header.Set("Authorization", tt.header)
 			}
-			user, token, st := extractCredential(r)
+			user, token, st := extractCredential(r, nil)
 			if st != tt.wantState {
 				t.Fatalf("state = %v, want %v", st, tt.wantState)
 			}
@@ -119,7 +119,7 @@ func TestSessionTokenExtraction(t *testing.T) {
 			if tt.header != "" {
 				r.Header.Set(ndAuthHeader, tt.header)
 			}
-			if got := sessionToken(r); got != tt.want {
+			if got := sessionToken(r, nil); got != tt.want {
 				t.Fatalf("sessionToken = %q, want %q", got, tt.want)
 			}
 		})
@@ -470,6 +470,88 @@ func TestRestSessionTokenIsStrippedUpstream(t *testing.T) {
 		if strings.Contains(cap.rawQuery, k) {
 			t.Fatalf("credential param %q forwarded upstream: %q", k, cap.rawQuery)
 		}
+	}
+}
+
+// TestFormPostCredentialResolution covers OpenSubsonic `formPost` clients
+// (Feishin's "Navidrome" server type), which send the credential in a urlencoded
+// POST body instead of the query string.
+func TestFormPostCredentialResolution(t *testing.T) {
+	tests := []struct {
+		name        string
+		body        string
+		seedSession bool
+		wantStatus  int
+		wantCode    int
+	}{
+		{
+			name:       "body u p pat",
+			body:       "u=dummy-DO-NOT-USE%40example.invalid&p=pat-123&id=x&submission=false&c=Feishin&f=json&v=1.13.0",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:        "body t session",
+			body:        "u=dummy-DO-NOT-USE%40example.invalid&t=" + testSessionToken + "&s=abcdef&id=x&submission=false&c=Feishin&f=json&v=1.13.0",
+			seedSession: true,
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:       "body without credential",
+			body:       "id=x&submission=false&c=Feishin&f=json&v=1.13.0",
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   subsonicErrorWrongCredentials,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var kcCalls int32
+			kc := fakeKeycloak(t, "dummy-DO-NOT-USE@example.invalid", "pat-123", &kcCalls)
+			defer kc.Close()
+			cap := &upstreamCapture{}
+			up := fakeUpstream(t, cap)
+			defer up.Close()
+
+			srv := newTestServer(t, kc.URL, up.URL, time.Minute)
+			if tt.seedSession {
+				srv.sessions.set(testSessionToken, "dummy-DO-NOT-USE@example.invalid")
+			}
+			req := httptest.NewRequest(http.MethodPost, "/rest/scrobble.view", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if tt.wantStatus != http.StatusOK {
+				if tt.wantCode != 0 {
+					if got := subsonicErrorCode(t, rec.Body.Bytes()); got != tt.wantCode {
+						t.Fatalf("subsonic error code = %d, want %d", got, tt.wantCode)
+					}
+				}
+				if atomic.LoadInt32(&cap.hits) != 0 {
+					t.Fatalf("upstream called for a rejected request")
+				}
+				return
+			}
+			if atomic.LoadInt32(&cap.hits) != 1 {
+				t.Fatalf("upstream hits = %d, want 1", cap.hits)
+			}
+			if cap.identityHeader != "dummy-DO-NOT-USE@example.invalid" {
+				t.Fatalf("upstream identity = %q, want dummy-DO-NOT-USE@example.invalid", cap.identityHeader)
+			}
+			if cap.path != "/rest/scrobble.view" {
+				t.Fatalf("upstream path = %q", cap.path)
+			}
+			for _, k := range []string{"p=", "t=", "s="} {
+				if strings.Contains(cap.body, k) {
+					t.Fatalf("credential %q forwarded in the body: %q", k, cap.body)
+				}
+			}
+			if !strings.Contains(cap.body, "submission=false") {
+				t.Fatalf("non-credential body params dropped: %q", cap.body)
+			}
+		})
 	}
 }
 

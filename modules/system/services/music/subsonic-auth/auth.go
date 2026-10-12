@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -37,11 +38,24 @@ var identityHeaders = []string{
 	"Remote-Groups",
 }
 
+// param returns the first non-empty value for key from the urlencoded POST body
+// (the OpenSubsonic `formPost` transport Feishin's "Navidrome" server type
+// uses) or, failing that, the query string. Both must be consulted: a native
+// client may send a credential either way.
+func param(r *http.Request, form url.Values, key string) string {
+	if form != nil {
+		if v := form.Get(key); v != "" {
+			return v
+		}
+	}
+	return r.URL.Query().Get(key)
+}
+
 // extractCredential reads the password credentials in order: HTTP Basic first,
-// then the Subsonic `u`/`p` query parameters (`p` may be plaintext or
-// `enc:<hex>`). A `t`/`s` pair is not read here; it is resolved as a session
-// token by the server.
-func extractCredential(r *http.Request) (user, token string, st credStatus) {
+// then the Subsonic `u`/`p` parameters (`p` may be plaintext or `enc:<hex>`),
+// from the POST body or the query. A `t`/`s` pair is not read here; it is
+// resolved as a session token by the server.
+func extractCredential(r *http.Request, form url.Values) (user, token string, st credStatus) {
 	if auth := r.Header.Get("Authorization"); auth != "" {
 		const prefix = "basic "
 		if len(auth) >= len(prefix) && strings.EqualFold(auth[:len(prefix)], prefix) {
@@ -56,8 +70,8 @@ func extractCredential(r *http.Request) (user, token string, st credStatus) {
 			return u, p, credOK
 		}
 	}
-	q := r.URL.Query()
-	if u, p := q.Get("u"), q.Get("p"); u != "" && p != "" {
+	u, p := param(r, form, "u"), param(r, form, "p")
+	if u != "" && p != "" {
 		if enc, ok := strings.CutPrefix(p, "enc:"); ok {
 			b, err := hex.DecodeString(enc)
 			if err != nil {
@@ -72,12 +86,12 @@ func extractCredential(r *http.Request) (user, token string, st credStatus) {
 
 // sessionToken returns the opaque token a native API client replays after
 // login, from either `X-Nd-Authorization: Bearer <token>` or the Subsonic `t`
-// parameter. Unknown tokens are rejected by the caller.
-func sessionToken(r *http.Request) string {
+// parameter (POST body or query). Unknown tokens are rejected by the caller.
+func sessionToken(r *http.Request, form url.Values) string {
 	if tok := bearerToken(r.Header.Get(ndAuthHeader)); tok != "" {
 		return tok
 	}
-	return r.URL.Query().Get("t")
+	return param(r, form, "t")
 }
 
 func bearerToken(v string) string {

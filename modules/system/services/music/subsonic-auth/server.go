@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -63,27 +66,66 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user, token, st := extractCredential(r); st == credOK {
+	// OpenSubsonic clients that honour the `formPost` extension — Feishin's
+	// "Navidrome" server type does — send the Subsonic parameters, credential
+	// included, in a urlencoded body rather than the query string. Parse them
+	// here so `u`/`p`/`t` are found, and hand the values to proxy() so it can
+	// strip the credential from the body before it reaches Navidrome.
+	form, err := readFormBody(r)
+	if err != nil {
+		s.deny(w, r, subsonicErrorWrongCredentials, "malformed request body")
+		return
+	}
+
+	if user, token, st := extractCredential(r, form); st == credOK {
 		identity, ok := s.validatePAT(r.Context(), user, token)
 		if !ok {
 			s.deny(w, r, subsonicErrorWrongCredentials, "invalid or expired personal access token")
 			return
 		}
-		s.proxy(w, r, identity)
+		s.proxy(w, r, identity, form)
 		return
 	}
 
-	if token := sessionToken(r); token != "" {
+	if token := sessionToken(r, form); token != "" {
 		identity, ok := s.sessions.get(token)
 		if !ok {
 			s.deny(w, r, subsonicErrorTokenUnsupported, "invalid or expired session token")
 			return
 		}
-		s.proxy(w, r, identity)
+		s.proxy(w, r, identity, form)
 		return
 	}
 
 	s.deny(w, r, subsonicErrorWrongCredentials, "missing or malformed credentials")
+}
+
+// maxFormBody bounds a urlencoded request body we will buffer. A Subsonic
+// `formPost` request carries only a small parameter set, never media.
+const maxFormBody = 1 << 20
+
+// readFormBody parses an application/x-www-form-urlencoded POST body (the
+// OpenSubsonic `formPost` transport) and returns its values. For any other
+// request it returns nil and leaves the body for the upstream.
+func readFormBody(r *http.Request) (url.Values, error) {
+	if r.Method != http.MethodPost || r.Body == nil {
+		return nil, nil
+	}
+	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mt != "application/x-www-form-urlencoded" {
+		return nil, nil
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maxFormBody))
+	if err != nil {
+		return nil, err
+	}
+	_ = r.Body.Close()
+	form, err := url.ParseQuery(string(raw))
+	if err != nil {
+		return nil, err
+	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
+	return form, nil
 }
 
 // loginRequest and loginResponse mirror the JSON shapes Navidrome's
@@ -154,12 +196,25 @@ func (s *server) validatePAT(ctx context.Context, user, token string) (string, b
 
 // proxy strips every client-supplied identity header (and the credential) and
 // sets the one identity header the upstream trusts.
-func (s *server) proxy(w http.ResponseWriter, r *http.Request, identity string) {
+func (s *server) proxy(w http.ResponseWriter, r *http.Request, identity string, form url.Values) {
 	r.Header.Del("Authorization")
 	r.Header.Del(ndAuthHeader)
 	scrubIdentityHeaders(r.Header)
 	r.Header.Set(s.identityHeader, identity)
 	stripSubsonicCreds(r.URL)
+
+	// A `formPost` credential lives in the body, so drop it there too before
+	// re-encoding, keeping the token out of the upstream's logs.
+	if form != nil {
+		for _, k := range []string{"p", "t", "s"} {
+			form.Del(k)
+		}
+		buf := []byte(form.Encode())
+		r.Body = io.NopCloser(bytes.NewReader(buf))
+		r.ContentLength = int64(len(buf))
+		r.Header.Set("Content-Length", strconv.Itoa(len(buf)))
+	}
+
 	s.reverseProxy.ServeHTTP(w, r)
 }
 
