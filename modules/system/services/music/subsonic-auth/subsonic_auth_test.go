@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -52,9 +53,9 @@ func TestExtractCredential(t *testing.T) {
 			wantState: credOK,
 		},
 		{
-			name:      "query t+s is unsupported",
+			name:      "t+s is not a password credential",
 			url:       "/rest/ping.view?u=dummy-DO-NOT-USE%40example.invalid&t=abcd&s=efgh",
-			wantState: credUnsupportedToken,
+			wantState: credNone,
 		},
 		{
 			name:      "no credentials",
@@ -98,6 +99,33 @@ func TestExtractCredential(t *testing.T) {
 	}
 }
 
+func TestSessionTokenExtraction(t *testing.T) {
+	tests := []struct {
+		name   string
+		header string
+		url    string
+		want   string
+	}{
+		{name: "bearer header", header: "Bearer tok-1", url: "/api/keepalive", want: "tok-1"},
+		{name: "bearer scheme case-insensitive", header: "bearer tok-1", url: "/api/keepalive", want: "tok-1"},
+		{name: "non-bearer header ignored", header: "Basic abc", url: "/api/keepalive", want: ""},
+		{name: "subsonic t param", url: "/rest/ping.view?t=tok-2&s=salt", want: "tok-2"},
+		{name: "header wins over t param", header: "Bearer tok-1", url: "/rest/ping.view?t=tok-2", want: "tok-1"},
+		{name: "absent", url: "/api/keepalive", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, tt.url, nil)
+			if tt.header != "" {
+				r.Header.Set(ndAuthHeader, tt.header)
+			}
+			if got := sessionToken(r); got != tt.want {
+				t.Fatalf("sessionToken = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func hexOf(s string) string {
 	const hexdigits = "0123456789abcdef"
 	var b strings.Builder
@@ -128,13 +156,14 @@ func fakeKeycloak(t *testing.T, wantUser, wantToken string, calls *int32) *httpt
 }
 
 type upstreamCapture struct {
-	identityHeader string
-	authorization  string
-	path           string
-	rawQuery       string
-	rangeHeader    string
-	hits           int32
-	body           string
+	identityHeader  string
+	authorization   string
+	ndAuthorization string
+	path            string
+	rawQuery        string
+	rangeHeader     string
+	hits            int32
+	body            string
 }
 
 func fakeUpstream(t *testing.T, cap *upstreamCapture) *httptest.Server {
@@ -143,6 +172,7 @@ func fakeUpstream(t *testing.T, cap *upstreamCapture) *httptest.Server {
 		atomic.AddInt32(&cap.hits, 1)
 		cap.identityHeader = r.Header.Get("X-Forwarded-Preferred-Username")
 		cap.authorization = r.Header.Get("Authorization")
+		cap.ndAuthorization = r.Header.Get(ndAuthHeader)
 		cap.path = r.URL.Path
 		cap.rawQuery = r.URL.RawQuery
 		cap.rangeHeader = r.Header.Get("Range")
@@ -163,7 +193,284 @@ func newTestServer(t *testing.T, keycloakURL string, upstreamURL string, ttl tim
 	if err != nil {
 		t.Fatalf("validator: %v", err)
 	}
-	return newServer("X-Forwarded-Preferred-Username", newCredCache(ttl, 16), v, u)
+	return newServer(serverDeps{
+		identityHeader: "X-Forwarded-Preferred-Username",
+		cache:          newCredCache(ttl, 16),
+		sessions:       newSessionCache(ttl, 16),
+		validator:      v,
+		upstream:       u,
+	})
+}
+
+func postLogin(t *testing.T, srv *server, user, pass string) *httptest.ResponseRecorder {
+	t.Helper()
+	b, err := json.Marshal(loginRequest{Username: user, Password: pass})
+	if err != nil {
+		t.Fatalf("marshal login: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, loginPath, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+const testSessionToken = "deadbeefcafe"
+
+func TestLoginSuccessPopulatesSession(t *testing.T) {
+	var kcCalls int32
+	kc := fakeKeycloak(t, "dummy-DO-NOT-USE@example.invalid", "pat-123", &kcCalls)
+	defer kc.Close()
+	up := fakeUpstream(t, &upstreamCapture{})
+	defer up.Close()
+
+	srv := newTestServer(t, kc.URL, up.URL, time.Minute)
+	rec := postLogin(t, srv, "dummy-DO-NOT-USE@example.invalid", "pat-123")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %q)", rec.Code, rec.Body.String())
+	}
+
+	var resp loginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("body is not json: %v (%q)", err, rec.Body.String())
+	}
+	if resp.ID != "dummy-DO-NOT-USE@example.invalid" || resp.Name != "dummy-DO-NOT-USE@example.invalid" || resp.Username != "dummy-DO-NOT-USE@example.invalid" {
+		t.Fatalf("identity fields = (%q,%q,%q), want dummy-DO-NOT-USE@example.invalid", resp.ID, resp.Name, resp.Username)
+	}
+	if resp.IsAdmin {
+		t.Fatalf("isAdmin = true, want false")
+	}
+	if len(resp.SubsonicSalt) != 6 {
+		t.Fatalf("subsonicSalt = %q, want 6 hex chars", resp.SubsonicSalt)
+	}
+	if resp.Token == "" || resp.Token != resp.SubsonicToken {
+		t.Fatalf("token/subsonicToken = (%q,%q), want equal and non-empty", resp.Token, resp.SubsonicToken)
+	}
+	identity, ok := srv.sessions.get(resp.Token)
+	if !ok || identity != "dummy-DO-NOT-USE@example.invalid" {
+		t.Fatalf("session cache = (%q,%v), want dummy-DO-NOT-USE@example.invalid,true", identity, ok)
+	}
+}
+
+func TestLoginBadPATReturns401(t *testing.T) {
+	tests := []struct {
+		name string
+		user string
+		pass string
+	}{
+		{name: "wrong password", user: "dummy-DO-NOT-USE@example.invalid", pass: "wrong-pat"},
+		{name: "empty password", user: "dummy-DO-NOT-USE@example.invalid", pass: ""},
+		{name: "empty username", user: "", pass: "pat-123"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var kcCalls int32
+			kc := fakeKeycloak(t, "dummy-DO-NOT-USE@example.invalid", "pat-123", &kcCalls)
+			defer kc.Close()
+			up := fakeUpstream(t, &upstreamCapture{})
+			defer up.Close()
+
+			srv := newTestServer(t, kc.URL, up.URL, time.Minute)
+			rec := postLogin(t, srv, tt.user, tt.pass)
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401", rec.Code)
+			}
+			if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
+				t.Fatalf("content-type = %q, want json", ct)
+			}
+			srv.sessions.mu.Lock()
+			n := len(srv.sessions.m)
+			srv.sessions.mu.Unlock()
+			if n != 0 {
+				t.Fatalf("session cache has %d entries after a failed login", n)
+			}
+		})
+	}
+}
+
+func TestLoginMalformedJSONReturns401(t *testing.T) {
+	var kcCalls int32
+	kc := fakeKeycloak(t, "dummy-DO-NOT-USE@example.invalid", "pat-123", &kcCalls)
+	defer kc.Close()
+	up := fakeUpstream(t, &upstreamCapture{})
+	defer up.Close()
+
+	srv := newTestServer(t, kc.URL, up.URL, time.Minute)
+	req := httptest.NewRequest(http.MethodPost, loginPath, strings.NewReader("not json"))
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+// TestCredentialResolution covers every way a native request can be
+// authenticated (and the ways it must be rejected), end to end through the
+// handler.
+func TestCredentialResolution(t *testing.T) {
+	tests := []struct {
+		name         string
+		seedSession  bool
+		path         string
+		setHeaders   map[string]string
+		wantStatus   int
+		wantIdentity string // "" means the upstream must not be called
+		wantCode     int    // Subsonic error code, 0 when not applicable
+	}{
+		{
+			name:         "api bearer session",
+			seedSession:  true,
+			path:         "/api/keepalive",
+			setHeaders:   map[string]string{ndAuthHeader: "Bearer {token}"},
+			wantStatus:   http.StatusOK,
+			wantIdentity: "dummy-DO-NOT-USE@example.invalid",
+		},
+		{
+			name:         "api bearer session lowercase scheme",
+			seedSession:  true,
+			path:         "/api/keepalive",
+			setHeaders:   map[string]string{ndAuthHeader: "bearer {token}"},
+			wantStatus:   http.StatusOK,
+			wantIdentity: "dummy-DO-NOT-USE@example.invalid",
+		},
+		{
+			name:         "rest t session",
+			seedSession:  true,
+			path:         "/rest/ping.view?u=dummy-DO-NOT-USE%40example.invalid&t={token}&s=abcdef&v=1.16.1&c=test&f=json",
+			wantStatus:   http.StatusOK,
+			wantIdentity: "dummy-DO-NOT-USE@example.invalid",
+		},
+		{
+			name:         "basic pat",
+			path:         "/rest/ping.view?v=1.16.1&c=test&f=json",
+			setHeaders:   map[string]string{"Authorization": basic("dummy-DO-NOT-USE@example.invalid", "pat-123")},
+			wantStatus:   http.StatusOK,
+			wantIdentity: "dummy-DO-NOT-USE@example.invalid",
+		},
+		{
+			name:         "query u p pat",
+			path:         "/rest/ping.view?u=dummy-DO-NOT-USE%40example.invalid&p=pat-123&v=1.16.1&c=test&f=json",
+			wantStatus:   http.StatusOK,
+			wantIdentity: "dummy-DO-NOT-USE@example.invalid",
+		},
+		{
+			name:       "unknown t and s is code 41",
+			path:       "/rest/ping.view?u=dummy-DO-NOT-USE%40example.invalid&t=unknown&s=abcdef&v=1.16.1&c=test&f=json",
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   subsonicErrorTokenUnsupported,
+		},
+		{
+			name:       "unknown bearer session",
+			path:       "/api/keepalive",
+			setHeaders: map[string]string{ndAuthHeader: "Bearer expired"},
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "invalid pat",
+			path:       "/rest/ping.view",
+			setHeaders: map[string]string{"Authorization": basic("dummy-DO-NOT-USE@example.invalid", "wrong-pat")},
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   subsonicErrorWrongCredentials,
+		},
+		{
+			name:       "no credentials",
+			path:       "/rest/ping.view?v=1.16.1&c=test&f=json",
+			wantStatus: http.StatusUnauthorized,
+			wantCode:   subsonicErrorWrongCredentials,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var kcCalls int32
+			kc := fakeKeycloak(t, "dummy-DO-NOT-USE@example.invalid", "pat-123", &kcCalls)
+			defer kc.Close()
+			cap := &upstreamCapture{}
+			up := fakeUpstream(t, cap)
+			defer up.Close()
+
+			srv := newTestServer(t, kc.URL, up.URL, time.Minute)
+			if tt.seedSession {
+				srv.sessions.set(testSessionToken, "dummy-DO-NOT-USE@example.invalid")
+			}
+
+			path := strings.ReplaceAll(tt.path, "{token}", testSessionToken)
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			for k, v := range tt.setHeaders {
+				req.Header.Set(k, strings.ReplaceAll(v, "{token}", testSessionToken))
+			}
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+			if tt.wantIdentity == "" {
+				if got := atomic.LoadInt32(&cap.hits); got != 0 {
+					t.Fatalf("upstream called %d times, want 0", got)
+				}
+			} else {
+				if got := atomic.LoadInt32(&cap.hits); got != 1 {
+					t.Fatalf("upstream called %d times, want 1", got)
+				}
+				if cap.identityHeader != tt.wantIdentity {
+					t.Fatalf("upstream identity = %q, want %q", cap.identityHeader, tt.wantIdentity)
+				}
+				if cap.authorization != "" || cap.ndAuthorization != "" {
+					t.Fatalf("upstream saw client credentials: Authorization=%q ndAuth=%q", cap.authorization, cap.ndAuthorization)
+				}
+			}
+			if tt.wantCode != 0 {
+				if !strings.HasPrefix(path, "/rest") {
+					t.Fatalf("wantCode set for non-rest path %q", path)
+				}
+				if got := subsonicErrorCode(t, rec.Body.Bytes()); got != tt.wantCode {
+					t.Fatalf("subsonic error code = %d, want %d (%q)", got, tt.wantCode, rec.Body.String())
+				}
+			}
+		})
+	}
+}
+
+func subsonicErrorCode(t *testing.T, body []byte) int {
+	t.Helper()
+	var resp struct {
+		Subsonic struct {
+			Error struct {
+				Code int `json:"code"`
+			} `json:"error"`
+		} `json:"subsonic-response"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("body is not subsonic json: %v (%q)", err, body)
+	}
+	return resp.Subsonic.Error.Code
+}
+
+func TestRestSessionTokenIsStrippedUpstream(t *testing.T) {
+	var kcCalls int32
+	kc := fakeKeycloak(t, "dummy-DO-NOT-USE@example.invalid", "pat-123", &kcCalls)
+	defer kc.Close()
+	cap := &upstreamCapture{}
+	up := fakeUpstream(t, cap)
+	defer up.Close()
+
+	srv := newTestServer(t, kc.URL, up.URL, time.Minute)
+	srv.sessions.set(testSessionToken, "dummy-DO-NOT-USE@example.invalid")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/rest/ping.view?u=dummy-DO-NOT-USE%40example.invalid&t="+testSessionToken+"&s=abcdef&v=1.16.1&c=test&f=json", nil)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if cap.identityHeader != "dummy-DO-NOT-USE@example.invalid" {
+		t.Fatalf("upstream identity = %q", cap.identityHeader)
+	}
+	for _, k := range []string{"t=", "s="} {
+		if strings.Contains(cap.rawQuery, k) {
+			t.Fatalf("credential param %q forwarded upstream: %q", k, cap.rawQuery)
+		}
+	}
 }
 
 func TestHappyPathInjectsIdentity(t *testing.T) {
@@ -216,41 +523,6 @@ func TestSpoofedIdentityHeaderIsStripped(t *testing.T) {
 
 	if cap.identityHeader != "dummy-DO-NOT-USE@example.invalid" {
 		t.Fatalf("identity header = %q; spoof was not overwritten", cap.identityHeader)
-	}
-}
-
-func TestUnsupportedTokenAuthReturnsCode41(t *testing.T) {
-	var kcCalls int32
-	kc := fakeKeycloak(t, "dummy-DO-NOT-USE@example.invalid", "pat-123", &kcCalls)
-	defer kc.Close()
-	cap := &upstreamCapture{}
-	up := fakeUpstream(t, cap)
-	defer up.Close()
-
-	srv := newTestServer(t, kc.URL, up.URL, time.Minute)
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/rest/ping.view?u=dummy-DO-NOT-USE%40example.invalid&t=abcd&s=efgh&v=1.16.1&c=test&f=json", nil)
-	srv.Handler().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", rec.Code)
-	}
-	if atomic.LoadInt32(&cap.hits) != 0 {
-		t.Fatalf("upstream was called for an unsupported credential")
-	}
-	var body struct {
-		Resp struct {
-			Status string `json:"status"`
-			Error  struct {
-				Code int `json:"code"`
-			} `json:"error"`
-		} `json:"subsonic-response"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("body is not subsonic json: %v (%q)", err, rec.Body.String())
-	}
-	if body.Resp.Error.Code != subsonicErrorTokenUnsupported {
-		t.Fatalf("error code = %d, want %d", body.Resp.Error.Code, subsonicErrorTokenUnsupported)
 	}
 }
 
@@ -325,6 +597,43 @@ func TestCacheIsBounded(t *testing.T) {
 	kc.mu.Unlock()
 	if n > 3 {
 		t.Fatalf("cache grew to %d entries, cap is 3", n)
+	}
+}
+
+func TestSessionCacheExpiry(t *testing.T) {
+	sc := newSessionCache(20*time.Millisecond, 4)
+	sc.set("tok", "dummy-DO-NOT-USE@example.invalid")
+	if _, ok := sc.get("tok"); !ok {
+		t.Fatal("session should be a fresh hit")
+	}
+	time.Sleep(40 * time.Millisecond)
+	if _, ok := sc.get("tok"); ok {
+		t.Fatal("session should have expired")
+	}
+}
+
+func TestSessionCacheIsBounded(t *testing.T) {
+	sc := newSessionCache(time.Minute, 3)
+	for i := 0; i < 100; i++ {
+		sc.set(string(rune(i)), "u")
+	}
+	sc.mu.Lock()
+	n := len(sc.m)
+	sc.mu.Unlock()
+	if n > 3 {
+		t.Fatalf("session cache grew to %d entries, cap is 3", n)
+	}
+}
+
+func TestRandomHexLength(t *testing.T) {
+	for _, n := range []int{3, 32} {
+		s, err := randomHex(n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(s) != n*2 {
+			t.Fatalf("randomHex(%d) = %q, want %d hex chars", n, s, n*2)
+		}
 	}
 }
 

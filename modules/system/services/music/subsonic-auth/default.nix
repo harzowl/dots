@@ -14,6 +14,16 @@
 # sha256 of `user\x00token`; the plaintext is never stored) so polling/streaming
 # does not hit Keycloak per request.
 #
+# Native API clients that expect Navidrome's own login — desktop Feishin's
+# "Navidrome" server type does `POST /auth/login` and then sends
+# `X-Nd-Authorization: Bearer <token>` on `/api/*` (and `t=<token>` on `/rest`
+# fallbacks) — cannot use a PAT as a Navidrome password. The shim answers
+# `/auth/login` itself: it validates the JSON body's password as a Keycloak PAT,
+# mints an opaque session token, and remembers `token -> identity` in a
+# TTL-bounded in-memory cache. Subsequent requests are resolved from that cache
+# (or re-validated as a PAT). The cache is in-memory, so a restart drops
+# sessions and the client logs in again with its saved PAT.
+#
 # The container runs the statically linked binary bind-mounted into a stock
 # `alpine` image (no custom image build). It joins a user-defined network with a
 # fixed IP so Navidrome can trust exactly that address, and relies on the front
@@ -91,6 +101,15 @@ mkDotsModule {
         default = 4096;
         description = "Maximum number of cached validations (bounded).";
       };
+      sessionTtl = lib.mkOption {
+        type = lib.types.str;
+        default = "12h";
+        description = ''
+          Go duration a /auth/login session token stays valid. Sessions live in
+          memory only, so a restart drops them and the client re-logs-in with
+          its saved PAT.
+        '';
+      };
       validateTimeout = lib.mkOption {
         type = lib.types.str;
         default = "5s";
@@ -124,6 +143,7 @@ mkDotsModule {
           identityHeader = cfg.identityHeader;
           cacheTtl = cfg.cacheTtl;
           cacheSize = cfg.cacheSize;
+          sessionTtl = cfg.sessionTtl;
           validateTimeout = cfg.validateTimeout;
         };
       };

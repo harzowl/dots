@@ -23,7 +23,13 @@ func main() {
 		log.Fatalf("invalid KEYCLOAK_URL %q: %v", cfg.keycloakURL, err)
 	}
 
-	srv := newServer(cfg.identityHeader, newCredCache(cfg.cacheTTL, cfg.cacheSize), v, upstream)
+	srv := newServer(serverDeps{
+		identityHeader: cfg.identityHeader,
+		cache:          newCredCache(cfg.cacheTTL, cfg.cacheSize),
+		sessions:       newSessionCache(cfg.sessionTTL, cfg.cacheSize),
+		validator:      v,
+		upstream:       upstream,
+	})
 	httpServer := &http.Server{
 		Addr:              cfg.listenAddr,
 		Handler:           srv.Handler(),

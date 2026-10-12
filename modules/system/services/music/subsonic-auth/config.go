@@ -16,6 +16,7 @@ type config struct {
 	identityHeader  string
 	cacheTTL        time.Duration
 	cacheSize       int
+	sessionTTL      time.Duration
 	validateTimeout time.Duration
 }
 
@@ -28,6 +29,7 @@ func loadConfig() config {
 		identityHeader:  getenv("IDENTITY_HEADER", "X-Forwarded-Preferred-Username"),
 		cacheTTL:        getenvDuration("CACHE_TTL", 60*time.Second),
 		cacheSize:       getenvInt("CACHE_SIZE", 4096),
+		sessionTTL:      getenvDuration("SESSION_TTL", 12*time.Hour),
 		validateTimeout: getenvDuration("VALIDATE_TIMEOUT", 5*time.Second),
 	}
 }
