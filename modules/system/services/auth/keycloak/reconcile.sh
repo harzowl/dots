@@ -26,17 +26,40 @@ set -a
 . "${ENV_FILE}"
 set +a
 
-# Feed the resolved JSON in over stdin so it is owned by the container user; a
-# `docker cp` of a mode-0600 temp file is unreadable to kcadm.
-envsubst < "${PARTIAL}" | docker exec -i "${CONTAINER}" sh -c 'cat > /tmp/partial.json' || exit 0
-
 kcadm() { docker exec "${CONTAINER}" /opt/keycloak/bin/kcadm.sh "$@"; }
 
 kcadm config credentials \
   --server "http://127.0.0.1:${PORT}" --realm master \
   --user "${ADMIN}" --password "${KC_BOOTSTRAP_ADMIN_PASSWORD}" || exit 0
 
-kcadm create partialImport -r "${REALM}" -f /tmp/partial.json || true
+# `partialImport` with `ifResourceExists=OVERWRITE` DELETES and RE-CREATES each
+# client, which assigns it a new internal id and consequently orphans every live
+# client session. The next token refresh then fails with
+# `invalid_grant`/"Session doesn't have required client", and oauth2-proxy treats
+# that as fatal and clears the session — a forced logout. Because this unit runs
+# every minute, an unconditional import would log everyone out every minute.
+#
+# So only import when the resolved payload actually changed. The hash lives in
+# /run, so a reboot re-applies the realm once (idempotent) while a deploy's
+# Keycloak restart does not churn clients.
+RESOLVED=$(mktemp)
+envsubst < "${PARTIAL}" > "${RESOLVED}" || exit 0
+CUR_HASH=$(sha256sum "${RESOLVED}" | cut -d' ' -f1)
+HASH_FILE="/run/keycloak-reconcile/partial.sha256"
+mkdir -p "$(dirname "${HASH_FILE}")"
+if [ "${CUR_HASH}" = "$(cat "${HASH_FILE}" 2>/dev/null || true)" ]; then
+  echo "Realm payload unchanged (${CUR_HASH:0:12}); skipping partialImport."
+else
+  # Feed the resolved JSON in over stdin so it is owned by the container user; a
+  # `docker cp` of a mode-0600 temp file is unreadable to kcadm.
+  if docker exec -i "${CONTAINER}" sh -c 'cat > /tmp/partial.json' < "${RESOLVED}" \
+    && kcadm create partialImport -r "${REALM}" -f /tmp/partial.json >/dev/null; then
+    printf '%s\n' "${CUR_HASH}" > "${HASH_FILE}"
+  else
+    echo "partialImport failed; retrying next tick." >&2
+  fi
+fi
+rm -f "${RESOLVED}"
 
 # The declarative user profile: not part of partialImport, and its `${...}` are
 # Keycloak i18n keys — do NOT envsubst it.
