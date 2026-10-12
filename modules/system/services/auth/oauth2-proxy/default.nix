@@ -115,7 +115,7 @@ in
         extraOptions = [
           "--network=${g.network}"
         ]
-        ++ lib.optional (g.ip != null) [
+        ++ lib.optionals (g.ip != null) [
           "--ip"
           g.ip
         ];
