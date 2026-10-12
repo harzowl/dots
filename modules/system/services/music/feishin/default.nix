@@ -8,8 +8,8 @@
 # Keycloak gate; the browser session is seeded by the edge (which answers
 # `/settings.js` itself), so no `SERVER_*` environment is set here.
 let
-  mkDotsModule = import ../../../../lib/mkDotsModule.nix;
-  mkDockerService = import ../../../../lib/mkDockerService.nix;
+  mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
+  mkDockerService = import ../../../../../lib/mkDockerService.nix;
 
   defaults = {
     name = "feishin";
