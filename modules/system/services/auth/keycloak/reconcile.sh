@@ -16,9 +16,7 @@ PROFILE="@PROFILE_JSON@"
 
 if ! curl -fsS "http://127.0.0.1:${PORT}/realms/master/.well-known/openid-configuration" >/dev/null 2>&1; then
   echo "Keycloak not ready on :${PORT}; the timer will retry."
-kcadm update "realms/${REALM}" @SMTP_UPDATE@
-
-exit 0
+  exit 0
 fi
 
 set -a
@@ -60,6 +58,11 @@ else
   fi
 fi
 rm -f "${RESOLVED}"
+
+# Realm-level fields (the login page display name and the mail sender names) are
+# not part of the partial import, and a Keycloak restart does not re-import an
+# existing realm — so this is the only thing that keeps them in sync.
+@REALM_UPDATE@
 
 # The declarative user profile: not part of partialImport, and its `${...}` are
 # Keycloak i18n keys — do NOT envsubst it.

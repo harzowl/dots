@@ -112,11 +112,22 @@ mkDotsModule {
           null;
 
       smtp = realm.smtpServer or { };
-      smtpUpdate = lib.optionalString (smtp != { }) (
-        "kcadm update \"realms/\${REALM}\" "
-        + lib.concatMapStrings (k: "-s 'smtpServer.${k}=${toString smtp.${k}}' ") (lib.attrNames smtp)
-        + "|| true"
-      );
+
+      # The realm's display name (login page) and mail sender names are realm
+      # fields, not part of the client/role partial import, so the reconcile
+      # applies them with a plain `kcadm update realms/<realm>`.
+      realmUpdate =
+        let
+          displayFlag = lib.optionalString ((realm.displayName or null) != null) (
+            "-s 'displayName=${realm.displayName}' "
+          );
+          smtpFlags = lib.concatMapStrings (k: "-s 'smtpServer.${k}=${toString smtp.${k}}' ") (
+            lib.attrNames smtp
+          );
+        in
+        lib.optionalString (displayFlag != "" || smtpFlags != "") (
+          "kcadm update \"realms/\${REALM}\" ${displayFlag}${smtpFlags}|| true"
+        );
 
       reconcile =
         lib.replaceStrings
@@ -128,7 +139,7 @@ mkDotsModule {
             "@PROFILE_JSON@"
             "@REALM_ADMINS@"
             "@DEFAULT_REQUIRED_ACTIONS@"
-            "@SMTP_UPDATE@"
+            "@REALM_UPDATE@"
             "@ENV_FILE@"
             "@CONTAINER@"
           ]
@@ -140,7 +151,7 @@ mkDotsModule {
             (if profileJson != null then toString profileJson else "")
             (lib.concatStringsSep " " cfg.realmAdmins)
             (lib.concatStringsSep " " (realm.defaultRequiredActions or [ ]))
-            smtpUpdate
+            realmUpdate
             cfg.envFile
             "keycloak"
           ]
