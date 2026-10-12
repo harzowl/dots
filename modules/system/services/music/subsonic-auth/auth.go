@@ -84,16 +84,8 @@ func extractCredential(r *http.Request, form url.Values) (user, token string, st
 	return "", "", credNone
 }
 
-// sessionToken returns the opaque token a native API client replays after
-// login, from either `X-Nd-Authorization: Bearer <token>` or the Subsonic `t`
-// parameter (POST body or query). Unknown tokens are rejected by the caller.
-func sessionToken(r *http.Request, form url.Values) string {
-	if tok := bearerToken(r.Header.Get(ndAuthHeader)); tok != "" {
-		return tok
-	}
-	return param(r, form, "t")
-}
-
+// bearerToken extracts the token from an `X-Nd-Authorization: Bearer <token>`
+// header (the native `/api/*` client's session token). Empty if not a bearer.
 func bearerToken(v string) string {
 	const prefix = "bearer "
 	if len(v) >= len(prefix) && strings.EqualFold(v[:len(prefix)], prefix) {

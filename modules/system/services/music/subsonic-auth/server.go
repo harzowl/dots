@@ -77,6 +77,8 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Explicit password credentials: HTTP Basic, or the Subsonic `u`/`p`
+	// parameters (a Keycloak PAT, plaintext or `enc:<hex>`).
 	if user, token, st := extractCredential(r, form); st == credOK {
 		identity, ok := s.validatePAT(r.Context(), user, token)
 		if !ok {
@@ -87,13 +89,33 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if token := sessionToken(r, form); token != "" {
+	// `X-Nd-Authorization` carries the opaque session token /auth/login minted
+	// for the native `/api/*` client. The client re-logs-in when it expires.
+	if token := bearerToken(r.Header.Get(ndAuthHeader)); token != "" {
 		identity, ok := s.sessions.get(token)
 		if !ok {
 			s.deny(w, r, subsonicErrorTokenUnsupported, "invalid or expired session token")
 			return
 		}
 		s.proxy(w, r, identity, form)
+		return
+	}
+
+	// The Subsonic `t` parameter is the credential /auth/login hands back for
+	// `/rest` — the PAT itself, not a session token, so it keeps working across
+	// a shim restart. A session token is still accepted first for compatibility.
+	if token := param(r, form, "t"); token != "" {
+		if identity, ok := s.sessions.get(token); ok {
+			s.proxy(w, r, identity, form)
+			return
+		}
+		if user := param(r, form, "u"); user != "" {
+			if identity, ok := s.validatePAT(r.Context(), user, token); ok {
+				s.proxy(w, r, identity, form)
+				return
+			}
+		}
+		s.deny(w, r, subsonicErrorWrongCredentials, "invalid or expired personal access token")
 		return
 	}
 
@@ -130,6 +152,9 @@ func readFormBody(r *http.Request) (url.Values, error) {
 
 // loginRequest and loginResponse mirror the JSON shapes Navidrome's
 // /auth/login uses, so Feishin's "Navidrome" server type parses them unchanged.
+// `subsonicToken` is returned as the PAT so Feishin's `/rest` credential stays
+// valid across a shim restart (sessions live only in memory); `token` is the
+// opaque session for the native `/api/*` client, which re-logs-in on expiry.
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -174,7 +199,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Name:          identity,
 		Username:      identity,
 		SubsonicSalt:  salt,
-		SubsonicToken: token,
+		SubsonicToken: req.Password,
 		Token:         token,
 	})
 }

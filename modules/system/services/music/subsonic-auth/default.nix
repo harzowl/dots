@@ -9,20 +9,23 @@
 # `/personal-access-token/auth` endpoint, HTTP Basic `user:PAT`), and on success
 # proxies to Navidrome with a single trusted identity header.
 #
-# A `t`/`s` (md5) credential is rejected: the hash is one-way, so it cannot be
-# checked against a PAT. Positive validations are cached briefly (keyed by the
-# sha256 of `user\x00token`; the plaintext is never stored) so polling/streaming
-# does not hit Keycloak per request.
+# A raw `t`/`s` (md5) credential cannot be checked against a PAT and is
+# rejected, but `t` may carry a PAT directly (that is what `/auth/login` hands
+# back, below). Positive validations are cached briefly (keyed by the sha256 of
+# `user\x00token`; the plaintext is never stored) so polling/streaming does not
+# hit Keycloak per request.
 #
 # Native API clients that expect Navidrome's own login — desktop Feishin's
 # "Navidrome" server type does `POST /auth/login` and then sends
-# `X-Nd-Authorization: Bearer <token>` on `/api/*` (and `t=<token>` on `/rest`
-# fallbacks) — cannot use a PAT as a Navidrome password. The shim answers
-# `/auth/login` itself: it validates the JSON body's password as a Keycloak PAT,
-# mints an opaque session token, and remembers `token -> identity` in a
-# TTL-bounded in-memory cache. Subsequent requests are resolved from that cache
-# (or re-validated as a PAT). The cache is in-memory, so a restart drops
-# sessions and the client logs in again with its saved PAT.
+# `X-Nd-Authorization: Bearer <token>` on `/api/*` (and `t=<token>` on `/rest`)
+# — cannot use a PAT as a Navidrome password. The shim answers `/auth/login`
+# itself, validating the JSON body's password as a Keycloak PAT, and returns
+# both: `subsonicToken` is the PAT, so Feishin's `/rest` credential keeps
+# working across a shim restart; `token` is an opaque session the client
+# replays on `/api/*`. Sessions live in an in-memory TTL cache, so the `/api`
+# client re-logs-in with its saved PAT when one expires, while `/rest` requests
+# resolve `t` as a session first and otherwise re-validate it as a PAT against
+# Keycloak using the request's `u`.
 #
 # The container runs the statically linked binary bind-mounted into a stock
 # `alpine` image (no custom image build). It joins a user-defined network with a

@@ -99,28 +99,21 @@ func TestExtractCredential(t *testing.T) {
 	}
 }
 
-func TestSessionTokenExtraction(t *testing.T) {
+func TestBearerToken(t *testing.T) {
 	tests := []struct {
 		name   string
 		header string
-		url    string
 		want   string
 	}{
-		{name: "bearer header", header: "Bearer tok-1", url: "/api/keepalive", want: "tok-1"},
-		{name: "bearer scheme case-insensitive", header: "bearer tok-1", url: "/api/keepalive", want: "tok-1"},
-		{name: "non-bearer header ignored", header: "Basic abc", url: "/api/keepalive", want: ""},
-		{name: "subsonic t param", url: "/rest/ping.view?t=tok-2&s=salt", want: "tok-2"},
-		{name: "header wins over t param", header: "Bearer tok-1", url: "/rest/ping.view?t=tok-2", want: "tok-1"},
-		{name: "absent", url: "/api/keepalive", want: ""},
+		{name: "bearer", header: "Bearer tok-1", want: "tok-1"},
+		{name: "bearer scheme case-insensitive", header: "bearer tok-1", want: "tok-1"},
+		{name: "non-bearer ignored", header: "Basic abc", want: ""},
+		{name: "empty", header: "", want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodGet, tt.url, nil)
-			if tt.header != "" {
-				r.Header.Set(ndAuthHeader, tt.header)
-			}
-			if got := sessionToken(r, nil); got != tt.want {
-				t.Fatalf("sessionToken = %q, want %q", got, tt.want)
+			if got := bearerToken(tt.header); got != tt.want {
+				t.Fatalf("bearerToken(%q) = %q, want %q", tt.header, got, tt.want)
 			}
 		})
 	}
@@ -243,8 +236,13 @@ func TestLoginSuccessPopulatesSession(t *testing.T) {
 	if len(resp.SubsonicSalt) != 6 {
 		t.Fatalf("subsonicSalt = %q, want 6 hex chars", resp.SubsonicSalt)
 	}
-	if resp.Token == "" || resp.Token != resp.SubsonicToken {
-		t.Fatalf("token/subsonicToken = (%q,%q), want equal and non-empty", resp.Token, resp.SubsonicToken)
+	// subsonicToken must be the PAT (durable across restarts); token is the
+	// in-memory session for the native /api client.
+	if resp.SubsonicToken != "pat-123" {
+		t.Fatalf("subsonicToken = %q, want the PAT", resp.SubsonicToken)
+	}
+	if resp.Token == "" || resp.Token == resp.SubsonicToken {
+		t.Fatalf("token = %q, want a distinct non-empty session token", resp.Token)
 	}
 	identity, ok := srv.sessions.get(resp.Token)
 	if !ok || identity != "dummy-DO-NOT-USE@example.invalid" {
@@ -341,6 +339,12 @@ func TestCredentialResolution(t *testing.T) {
 			wantIdentity: "dummy-DO-NOT-USE@example.invalid",
 		},
 		{
+			name:         "rest t pat without a session",
+			path:         "/rest/ping.view?u=dummy-DO-NOT-USE%40example.invalid&t=pat-123&s=abcdef&v=1.16.1&c=test&f=json",
+			wantStatus:   http.StatusOK,
+			wantIdentity: "dummy-DO-NOT-USE@example.invalid",
+		},
+		{
 			name:         "basic pat",
 			path:         "/rest/ping.view?v=1.16.1&c=test&f=json",
 			setHeaders:   map[string]string{"Authorization": basic("dummy-DO-NOT-USE@example.invalid", "pat-123")},
@@ -354,10 +358,10 @@ func TestCredentialResolution(t *testing.T) {
 			wantIdentity: "dummy-DO-NOT-USE@example.invalid",
 		},
 		{
-			name:       "unknown t and s is code 41",
+			name:       "unknown t falls back to pat lookup and fails",
 			path:       "/rest/ping.view?u=dummy-DO-NOT-USE%40example.invalid&t=unknown&s=abcdef&v=1.16.1&c=test&f=json",
 			wantStatus: http.StatusUnauthorized,
-			wantCode:   subsonicErrorTokenUnsupported,
+			wantCode:   subsonicErrorWrongCredentials,
 		},
 		{
 			name:       "unknown bearer session",
@@ -473,6 +477,35 @@ func TestRestSessionTokenIsStrippedUpstream(t *testing.T) {
 	}
 }
 
+// TestRestPatTokenIsStrippedUpstream proves the fallback path (the PAT carried
+// as the Subsonic `t` parameter, as /auth/login now returns it) authenticates
+// without any session and is scrubbed before reaching Navidrome.
+func TestRestPatTokenIsStrippedUpstream(t *testing.T) {
+	var kcCalls int32
+	kc := fakeKeycloak(t, "dummy-DO-NOT-USE@example.invalid", "pat-123", &kcCalls)
+	defer kc.Close()
+	cap := &upstreamCapture{}
+	up := fakeUpstream(t, cap)
+	defer up.Close()
+
+	srv := newTestServer(t, kc.URL, up.URL, time.Minute)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/rest/scrobble.view?u=dummy-DO-NOT-USE%40example.invalid&t=pat-123&s=abcdef&id=x&submission=false&v=1.16.1&c=test&f=json", nil)
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if cap.identityHeader != "dummy-DO-NOT-USE@example.invalid" {
+		t.Fatalf("upstream identity = %q", cap.identityHeader)
+	}
+	for _, k := range []string{"t=", "s="} {
+		if strings.Contains(cap.rawQuery, k) {
+			t.Fatalf("credential param %q forwarded upstream: %q", k, cap.rawQuery)
+		}
+	}
+}
+
 // TestFormPostCredentialResolution covers OpenSubsonic `formPost` clients
 // (Feishin's "Navidrome" server type), which send the credential in a urlencoded
 // POST body instead of the query string.
@@ -494,6 +527,11 @@ func TestFormPostCredentialResolution(t *testing.T) {
 			body:        "u=dummy-DO-NOT-USE%40example.invalid&t=" + testSessionToken + "&s=abcdef&id=x&submission=false&c=Feishin&f=json&v=1.13.0",
 			seedSession: true,
 			wantStatus:  http.StatusOK,
+		},
+		{
+			name:       "body t pat without a session",
+			body:       "u=dummy-DO-NOT-USE%40example.invalid&t=pat-123&s=abcdef&id=x&submission=false&c=Feishin&f=json&v=1.13.0",
+			wantStatus: http.StatusOK,
 		},
 		{
 			name:       "body without credential",
