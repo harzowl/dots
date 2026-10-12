@@ -7,7 +7,7 @@ index 8bc629b..3d31437 100644
  }
  
 +.monitor-site-description {
-+    color: var(--color-text-subdue);
++    color: var(--color-text-base);
 +}
 +
  .monitor-site:hover .monitor-site-icon {
