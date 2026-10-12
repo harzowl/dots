@@ -107,6 +107,12 @@ mkDotsModule {
               default = false;
               description = "Hide the theme picker and force the default theme.";
             };
+
+            customCSSFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "URL of a CSS file loaded after the bundle (`theme.custom-css-file`).";
+            };
           };
         };
       };
@@ -163,13 +169,17 @@ mkDotsModule {
         // {
           disable-picker = cfg.theme.disablePicker;
         }
+        // lib.optionalAttrs (cfg.theme.customCSSFile != null) {
+          custom-css-file = cfg.theme.customCSSFile;
+        }
         // lib.optionalAttrs (presets != { }) { inherit presets; };
 
       themeWanted =
         cfg.theme.default != null
         || cfg.theme.allThemes
         || cfg.theme.presets != { }
-        || cfg.theme.disablePicker;
+        || cfg.theme.disablePicker
+        || cfg.theme.customCSSFile != null;
 
       config = (pkgs.formats.yaml { }).generate "glance.yml" (
         {
