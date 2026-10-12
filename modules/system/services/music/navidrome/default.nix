@@ -22,7 +22,11 @@ let
   defaults = {
     name = "navidrome";
     image = "deluan/navidrome:latest";
-    ports = [ "4533:4533" ];
+    # Loopback-only: the front proxy (host networking) reaches it on 127.0.0.1 and
+    # `openFirewall = false` keeps it off the LAN and the mesh. External auth on
+    # `/rest` trusts a source IP, so Navidrome must not be reachable directly.
+    ports = [ "127.0.0.1:4533:4533" ];
+    openFirewall = false;
   };
 in
 mkDotsModule {
@@ -114,6 +118,17 @@ mkDotsModule {
             admins). They must already exist in Navidrome.
           '';
         };
+        ensureUsers = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = ''
+            Navidrome usernames to CREATE if missing (non-admin). External
+            (ExtAuth) authentication on `/rest` does not auto-provision — only a
+            web-index load does — so accounts must exist before a client can
+            authenticate via the proxy header. A random local password is set;
+            logins go through the gate.
+          '';
+        };
       };
     };
 
@@ -184,6 +199,7 @@ mkDotsModule {
           path = with args.pkgs; [
             docker
             util-linux
+            coreutils
             gnugrep
           ];
           script = ''
@@ -204,6 +220,19 @@ mkDotsModule {
                 "docker exec -it ${cfg.name} /app/navidrome user create --username '${cfg.admin.username}' --admin -n" /dev/null >/dev/null 2>&1 \
                 || echo "warning: could not create the Navidrome admin"
             fi
+            ${lib.concatMapStrings (u: ''
+              if docker exec ${cfg.name} /app/navidrome user list -n 2>/dev/null | cut -d, -f2 | grep -qx ${lib.escapeShellArg u}; then
+                :
+              else
+                # ExtAuth on /rest does not auto-provision; seed the account with
+                # a random local password (logins go through the gate).
+                pw="$(head -c 24 /dev/urandom | base64)"
+                printf '%s\n%s\n' "$pw" "$pw" | script -qec \
+                  "docker exec -it ${cfg.name} /app/navidrome user create --username ${lib.escapeShellArg u} -n" /dev/null >/dev/null 2>&1 \
+                  && echo "created Navidrome user '${u}'" \
+                  || echo "warning: could not create Navidrome user '${u}'"
+              fi
+            '') cfg.admin.ensureUsers}
             ${lib.concatMapStrings (u: ''
               docker exec ${cfg.name} /app/navidrome user edit --user '${u}' --set-admin -n >/dev/null 2>&1 || true
             '') cfg.admin.ensureAdmins}
