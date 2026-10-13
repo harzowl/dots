@@ -22,13 +22,43 @@ mkDotsModule {
   description = "slskd Soulseek client (OCI container)";
 
   options =
-    { lib, ... }:
-    mkDockerService.options { inherit lib defaults; };
+    { lib, pkgs, ... }:
+    (mkDockerService.options { inherit lib defaults; })
+    // {
+      # slskd's config is the nested `slskd.yml`, and its environment names do
+      # not follow the YAML path (`soulseek.username` is `SLSKD_SLSK_USERNAME`),
+      # so the file is generated from this structure instead of the env vars
+      # `mkDockerService.settings` would produce.
+      settings = lib.mkOption {
+        type = (pkgs.formats.yaml { }).type;
+        default = { };
+        description = ''
+          Contents of slskd's `slskd.yml`. **Not for secrets** (the Nix store is
+          world-readable): pass those with `environmentFiles` — `SLSKD_PASSWORD`,
+          `SLSKD_SLSK_USERNAME`, `SLSKD_SLSK_PASSWORD` — which slskd overlays on
+          this file.
+        '';
+      };
+
+      # The container's own, non-secret environment (e.g. `tz`), mapped
+      # camelCase -> UPPER_SNAKE exactly like `mkDockerService.settings`.
+      environment = lib.mkOption {
+        type = lib.types.attrsOf lib.types.anything;
+        default = { };
+        description = "Extra container environment variables, e.g. `{ tz = \"Europe/Warsaw\"; }`.";
+      };
+    };
 
   toConfig =
     args: cfg:
+    let
+      config = (args.pkgs.formats.yaml { }).generate "slskd.yml" cfg.settings;
+    in
     mkDockerService.config {
-      spec = cfg;
+      spec = cfg // {
+        volumes = cfg.volumes ++ [ "${config}:/app/slskd.yml:ro" ];
+        settings = cfg.environment;
+      };
       inherit defaults;
     } args;
 }
