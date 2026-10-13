@@ -103,6 +103,18 @@
         '';
       };
 
+      dependsOn = opt "dependsOn" {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = ''
+          Services (or systemd units) this container is started after — a bare
+          name is this backend's container unit (`navidrome` becomes
+          `after`/`requires` `docker-navidrome.service`); an entry already ending
+          in `.service` is used verbatim (e.g. a host unit such as
+          `docker-network-music.service`). Keeps ordering out of host files.
+        '';
+      };
+
       openFirewall = opt "openFirewall" {
         type = lib.types.bool;
         default = true;
@@ -146,6 +158,13 @@
 
       # "host" or "host:container" -> the host port (for the firewall).
       hostPort = p: lib.head (lib.splitString ":" (toString p));
+
+      # `dependsOn` -> systemd unit names. A bare service name is this backend's
+      # container unit (`navidrome` -> `docker-navidrome.service`); an entry that
+      # already ends in `.service` is taken verbatim.
+      dependsOnUnits = map (
+        d: if lib.hasSuffix ".service" d then d else "${spec.backend}-${d}.service"
+      ) spec.dependsOn;
     in
     {
       virtualisation = {
@@ -199,16 +218,24 @@
         ) spec.environmentFiles
       );
 
-      systemd.services = lib.listToAttrs (
-        lib.imap0 (
-          i: _:
-          lib.nameValuePair "docker-${spec.name}-env-${toString i}" {
-            serviceConfig = {
-              Type = "oneshot";
-              ExecStart = "${pkgs.systemd}/bin/systemctl restart ${spec.backend}-${spec.name}.service";
-            };
-          }
-        ) spec.environmentFiles
-      );
+      systemd.services =
+        lib.listToAttrs (
+          lib.imap0 (
+            i: _:
+            lib.nameValuePair "docker-${spec.name}-env-${toString i}" {
+              serviceConfig = {
+                Type = "oneshot";
+                ExecStart = "${pkgs.systemd}/bin/systemctl restart ${spec.backend}-${spec.name}.service";
+              };
+            }
+          ) spec.environmentFiles
+        )
+        // lib.optionalAttrs (dependsOnUnits != [ ]) {
+          # Start after (and stay bound to) whatever the service depends on.
+          "${spec.backend}-${spec.name}" = {
+            after = dependsOnUnits;
+            requires = dependsOnUnits;
+          };
+        };
     };
 }

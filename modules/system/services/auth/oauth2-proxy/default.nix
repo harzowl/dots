@@ -67,6 +67,15 @@ let
         type = lib.types.attrsOf lib.types.anything;
         default = { };
       };
+      dependsOn = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = ''
+          Services (or systemd units) the gate is started after — a bare name is
+          the `docker-<name>.service` container unit; an entry ending in
+          `.service` is used verbatim (e.g. a host network unit).
+        '';
+      };
     };
   };
 
@@ -147,11 +156,20 @@ in
       # (re)start would otherwise kill it for good: disable the start-rate limit
       # so the unit keeps retrying until the IdP is back.
       systemd.services = lib.mapAttrs' (
-        name: _:
-        lib.nameValuePair "docker-oauth2-proxy-${name}" {
-          startLimitIntervalSec = 0;
-          serviceConfig.RestartSec = 5;
-        }
+        name: g:
+        let
+          dependsOn = map (d: if lib.hasSuffix ".service" d then d else "docker-${d}.service") g.dependsOn;
+        in
+        lib.nameValuePair "docker-oauth2-proxy-${name}" (
+          {
+            startLimitIntervalSec = 0;
+            serviceConfig.RestartSec = 5;
+          }
+          // lib.optionalAttrs (dependsOn != [ ]) {
+            after = dependsOn;
+            requires = dependsOn;
+          }
+        )
       ) enabled;
     };
 }
