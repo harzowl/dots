@@ -8,7 +8,10 @@ let
   defaults = {
     name = "glance";
     image = "glanceapp/glance:latest";
-    ports = [ "8082:8080" ];
+    # Behind a gate, so the app is loopback-only: the gate runs on the host
+    # network and reaches 127.0.0.1:8082. Publishing it on 0.0.0.0 would let the
+    # LAN and the mesh skip the login.
+    ports = [ "127.0.0.1:8082:8080" ];
     volumes = [ "/var/lib/glance:/app/data" ];
   };
 in
