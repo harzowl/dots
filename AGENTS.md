@@ -45,6 +45,15 @@ Every commit follows [Conventional Commits](https://www.conventionalcommits.org/
   `networking.*`, a `script` or any per-host glue to make a service work, the
   module is missing an option. Add it here — a service dependency (`dependsOn`),
   a network, an env var, ordering — so the next host gets it for free.
+- **Never hardcode what an option can carry.** A literal IP, port, hostname or
+  path in a module (or a host file) is a bug: it cannot be changed in one place
+  and it will drift. Give it an option (or reference the one that already
+  exists) and derive from it. Duplication is the thing to hunt, not just
+  addresses.
+- **A comment must earn its place.** Comment only a non-obvious *why* — a
+  security invariant, a footgun, a workaround — never what the code already
+  says, never structure, never the next line. If deleting it loses no
+  information, delete it.
 - **Shape service modules with `mkDockerService.options` / `.config`**, so their
   options *are* the container's: a new `mkDockerService` option then reaches
   every container service (feishin, navidrome, the gates, the shim, …) with no
