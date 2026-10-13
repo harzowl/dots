@@ -30,7 +30,7 @@ let
   mkPackage =
     args: cfg:
     let
-      enabled = args.lib.filter (n: cfg.patches.${n}) (attrNames patchFiles);
+      enabled = args.lib.filter (n: cfg.patches.${n}) (builtins.attrNames patchFiles);
     in
     if enabled == [ ] then
       cfg.package
