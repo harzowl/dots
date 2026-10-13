@@ -202,7 +202,7 @@ mkDotsModule {
             cfg.envFile
             "keycloak"
           ]
-          (builtins.readFile ./reconcile.sh);
+          (readFile ./reconcile.sh);
 
       db = {
         name = "keycloak-db";

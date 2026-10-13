@@ -17,7 +17,7 @@ let
   toTokens =
     key: value:
     let
-      flag = "--" + builtins.replaceStrings [ "_" ] [ "-" ] key;
+      flag = "--" + replaceStrings [ "_" ] [ "-" ] key;
     in
     if value == true then
       [ flag ]
@@ -34,7 +34,7 @@ let
         (toString value)
       ];
 
-  tokens = builtins.concatLists (lib.mapAttrsToList toTokens settings);
+  tokens = concatLists (lib.mapAttrsToList toTokens settings);
 in
 pkgs.writeShellScriptBin name ''
   defaults=(${lib.escapeShellArgs tokens})

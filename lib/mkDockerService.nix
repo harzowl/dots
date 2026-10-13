@@ -171,7 +171,7 @@
       network = spec.network or null;
       managedNetwork =
         network != null
-        && !(builtins.elem network.name [
+        && !(elem network.name [
           "host"
           "none"
           "bridge"
@@ -255,7 +255,7 @@
       # create`d.
       managedNetwork =
         network != null
-        && !(builtins.elem network.name [
+        && !(elem network.name [
           "host"
           "none"
           "bridge"
@@ -308,7 +308,7 @@
       };
 
       networking.firewall.allowedTCPPorts = lib.mkIf spec.openFirewall (
-        map (p: builtins.fromJSON (hostPort p)) spec.ports
+        map (p: fromJSON (hostPort p)) spec.ports
       );
 
       # Restart the container when a runtime env file's *contents* change.

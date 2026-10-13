@@ -10,7 +10,7 @@
 }:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
-  fishTheme = builtins.readFile ./dots-theme.fish;
+  fishTheme = readFile ./dots-theme.fish;
 in
 mkSharedProgram {
   inherit target root;

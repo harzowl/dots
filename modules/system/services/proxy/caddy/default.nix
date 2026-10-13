@@ -146,7 +146,7 @@ mkDotsModule {
       redactLog =
         host: vh:
         let
-          base = if builtins.isAttrs vh then vh else { extraConfig = vh; };
+          base = if isAttrs vh then vh else { extraConfig = vh; };
         in
         if cfg.accessLogFormat == null || base ? logFormat then
           base
