@@ -37,3 +37,17 @@ Every commit follows [Conventional Commits](https://www.conventionalcommits.org/
 - `.githooks/commit-msg` (enabled with `git config core.hooksPath .githooks`)
   rejects a non-conforming header; merge, revert and `fixup!`/`squash!` messages
   are exempt.
+
+## Module authors (binding)
+
+- **Every reusable behaviour is an option, not a copy-paste.** A consuming host
+  should express it declaratively; if a host has to hand-write `systemd.*`,
+  `networking.*`, a `script` or any per-host glue to make a service work, the
+  module is missing an option. Add it here — a service dependency (`dependsOn`),
+  a network, an env var, ordering — so the next host gets it for free.
+- **Shape service modules with `mkDockerService.options` / `.config`**, so their
+  options *are* the container's: a new `mkDockerService` option then reaches
+  every container service (feishin, navidrome, the gates, the shim, …) with no
+  per-module change.
+- Adding a service or a vhost inherits the security invariants above; do not opt
+  out, and do not re-implement them in the host.
