@@ -85,6 +85,25 @@ mkDotsModule {
           no image bake is needed.
         '';
       };
+
+      image = lib.mkOption {
+        type = lib.types.str;
+        default = "quay.io/keycloak/keycloak:latest";
+        description = ''
+          Keycloak container image. Pin a digest (`repo@sha256:…`) to keep an
+          exact build — a newer `:latest` migrates the database schema on start
+          and makes a rollback to a previous host impossible.
+        '';
+      };
+
+      dbImage = lib.mkOption {
+        type = lib.types.str;
+        default = "postgres:17-alpine";
+        description = ''
+          PostgreSQL image for `keycloak-db`. Pin a digest (`repo@sha256:…`) to
+          keep an exact build across hosts.
+        '';
+      };
     };
 
   toConfig =
@@ -178,7 +197,7 @@ mkDotsModule {
 
       db = {
         name = "keycloak-db";
-        image = "postgres:17-alpine";
+        image = cfg.dbImage;
         backend = "docker";
         openFirewall = false;
         ports = [ "127.0.0.1:5432:5432" ];
@@ -195,7 +214,7 @@ mkDotsModule {
 
       keycloak = {
         name = "keycloak";
-        image = "quay.io/keycloak/keycloak:latest";
+        image = cfg.image;
         backend = "docker";
         openFirewall = true;
         ports = [ ];
