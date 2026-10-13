@@ -45,6 +45,10 @@ Every commit follows [Conventional Commits](https://www.conventionalcommits.org/
   `networking.*`, a `script` or any per-host glue to make a service work, the
   module is missing an option. Add it here — a service dependency (`dependsOn`),
   a network, an env var, ordering — so the next host gets it for free.
+- **Never embed a config blob in a `.nix` file.** A Caddyfile fragment, a script
+  or any other config goes in its own file beside the module (`keycloak/reconcile.sh`,
+  a `caddy/*.conf`) and is referenced, never inlined as a `''…''` string.
+  Host-derived values are `@PLACEHOLDER@`s the caller substitutes.
 - **Never hardcode what an option can carry.** A literal IP, port, hostname or
   path in a module (or a host file) is a bug: it cannot be changed in one place
   and it will drift. Give it an option (or reference the one that already
