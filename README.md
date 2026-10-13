@@ -57,3 +57,13 @@ most of the list is "use the default and don't opt out".
 7. **Guard the default.** Add a test or an assertion that the safe behaviour is
    the default (e.g. every generated vhost has redaction, `/auth/login` never
    returns the raw credential), so a future change cannot regress it silently.
+
+## Commit messages
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
+— `type(scope): description`, with the **type required** (`feat`, `fix`, `docs`,
+`style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`), the scope
+optional, and `!` (or a `BREAKING CHANGE:` footer) marking a break. Keep the
+description imperative and lowercase, with no trailing period. The
+[`.githooks/commit-msg`](./.githooks/commit-msg) hook enforces the header once
+`core.hooksPath` points at `.githooks`.

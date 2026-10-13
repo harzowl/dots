@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Enforce Conventional Commits on the commit header.
+# Spec: https://www.conventionalcommits.org/en/v1.0.0/
+#
+#   <type>(<optional-scope>)!: <description>
+#
+# A type is REQUIRED; the scope is optional; a trailing `!` marks a breaking
+# change (the equivalent alternative is a `BREAKING CHANGE:` footer in the
+# body). Installed via `git config core.hooksPath .githooks`.
+set -euo pipefail
+
+types='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+msg_file=${1:?usage: commit-msg <message-file>}
+IFS= read -r subject <"$msg_file" || true
+
+# Let git's own message shapes through: merge, revert, autosquash.
+case "$subject" in
+  'Merge '* | 'Revert '* | 'fixup!'* | 'squash!'* | 'amend!'* | '') exit 0 ;;
+esac
+
+re="^($types)(\([^)]+\))?!?: .+"
+if [[ ! "$subject" =~ $re ]]; then
+  {
+    printf 'commit-msg: subject is not a Conventional Commit.\n\n'
+    printf '  <type>(<optional-scope>): <description>\n\n'
+    printf '  type: one of %s\n' "$types"
+    printf '  e.g.  feat(glance): expose theme.custom-css-file\n'
+    printf '        fix: refuse a raw PAT in the subsonic t parameter\n\n'
+    printf 'A type is required and must be followed by a colon and a space. See\n'
+    printf 'https://www.conventionalcommits.org/en/v1.0.0/\n'
+  } >&2
+  exit 1
+fi
+
+case "$subject" in
+  *.)
+    printf 'commit-msg: the subject must not end with a period.\n' >&2
+    exit 1
+    ;;
+esac

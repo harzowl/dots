@@ -20,3 +20,20 @@ thin and put reusable behaviour here.
 - **Pass secrets in, never bake them in.** Secrets arrive via `environmentFiles`
   / systemd credentials — never as a module `settings` value (that lands in the
   Nix store) and never in generated config. Never log a secret.
+
+## Commit messages (binding)
+
+Every commit follows [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
+
+```
+<type>(<optional-scope>): <description>
+```
+
+- **A type is required**; the scope is optional. Use one of `feat`, `fix`,
+  `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
+- Keep the description imperative and lowercase, with no trailing period.
+- A breaking change carries `!` after the type/scope (or a `BREAKING CHANGE:`
+  footer in the body).
+- `.githooks/commit-msg` (enabled with `git config core.hooksPath .githooks`)
+  rejects a non-conforming header; merge, revert and `fixup!`/`squash!` messages
+  are exempt.
