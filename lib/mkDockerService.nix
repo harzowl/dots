@@ -115,7 +115,7 @@
       spec,
       defaults ? { },
     }:
-    { lib, ... }:
+    { lib, pkgs, ... }:
     let
       # Merge the service's default settings with the user's (an option default
       # does not merge with a partial definition).
@@ -176,6 +176,39 @@
 
       networking.firewall.allowedTCPPorts = lib.mkIf spec.openFirewall (
         map (p: builtins.fromJSON (hostPort p)) spec.ports
+      );
+
+      # Restart the container when a runtime env file's *contents* change.
+      #
+      # NixOS change-detection only reacts to unit *definitions*, never to files
+      # a unit merely references — and `environmentFiles` live in /run (absent at
+      # build time), so `restartTriggers` cannot watch them. Each such file gets
+      # a path unit that, when the file is written (e.g. a rotated secret),
+      # triggers a oneshot which restarts the container. A path activation only
+      # *starts* an inactive unit, hence the explicit restart.
+      systemd.paths = lib.listToAttrs (
+        lib.imap0 (
+          i: file:
+          lib.nameValuePair "docker-${spec.name}-env-${toString i}" {
+            wantedBy = [ "multi-user.target" ];
+            pathConfig = {
+              PathChanged = file;
+              Unit = "docker-${spec.name}-env-${toString i}.service";
+            };
+          }
+        ) spec.environmentFiles
+      );
+
+      systemd.services = lib.listToAttrs (
+        lib.imap0 (
+          i: _:
+          lib.nameValuePair "docker-${spec.name}-env-${toString i}" {
+            serviceConfig = {
+              Type = "oneshot";
+              ExecStart = "${pkgs.systemd}/bin/systemctl restart ${spec.backend}-${spec.name}.service";
+            };
+          }
+        ) spec.environmentFiles
       );
     };
 }
