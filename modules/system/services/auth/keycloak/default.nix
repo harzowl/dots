@@ -42,6 +42,15 @@ mkDotsModule {
         description = "Public URL (no trailing slash). Defaults to `auth.<domain>`.";
       };
 
+      hostnameAdmin = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Public URL the admin console is served on when it differs from
+          `hostname` (`KC_HOSTNAME_ADMIN`). The host must reach Keycloak too.
+        '';
+      };
+
       adminUser = lib.mkOption {
         type = lib.types.str;
         default = "admin";
@@ -241,6 +250,9 @@ mkDotsModule {
           kcHttpPort = cfg.port;
           kcHealthEnabled = true;
           kcBootstrapAdminUsername = cfg.adminUser;
+        }
+        // lib.optionalAttrs (cfg.hostnameAdmin != null) {
+          kcHostnameAdmin = "https://${cfg.hostnameAdmin}";
         };
       };
     in
