@@ -195,6 +195,17 @@
       # The declared network, if any: the container joins it and starts after it.
       network = spec.network or null;
 
+      # Only a *user-defined* network gets a unit to create and wait for; the
+      # pre-defined `host`/`none`/`bridge` ones must not be `docker network
+      # create`d.
+      managedNetwork =
+        network != null
+        && !(builtins.elem network.name [
+          "host"
+          "none"
+          "bridge"
+        ]);
+
       # `dependsOn` -> systemd unit names. A bare service name is this backend's
       # container unit (`navidrome` -> `docker-navidrome.service`); an entry that
       # already ends in `.service` is taken verbatim. The declared network is
@@ -203,7 +214,7 @@
         map (d: if lib.hasSuffix ".service" d then d else "${spec.backend}-${d}.service") (
           spec.dependsOn or [ ]
         )
-        ++ lib.optional (network != null) "docker-network-${network.name}.service";
+        ++ lib.optional managedNetwork "docker-network-${network.name}.service";
     in
     {
       virtualisation = {
@@ -285,7 +296,7 @@
             requires = dependsOnUnits;
           };
         }
-        // lib.optionalAttrs (network != null) {
+        // lib.optionalAttrs managedNetwork {
           # Create the user-defined network once (idempotent); every service that
           # names it declares the same unit, which the module system merges.
           "docker-network-${network.name}" = {
