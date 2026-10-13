@@ -52,16 +52,6 @@ mkDotsModule {
     { lib, ... }:
     (mkDockerService.options { inherit lib defaults; })
     // {
-      network = lib.mkOption {
-        type = lib.types.str;
-        default = "music";
-        description = "Docker network the shim joins (must be the one Navidrome is on).";
-      };
-      ip = lib.mkOption {
-        type = lib.types.str;
-        default = "172.30.0.30";
-        description = "Static container IP; this is what Navidrome must trust to set the header.";
-      };
       port = lib.mkOption {
         type = lib.types.port;
         default = 4184;
@@ -145,11 +135,6 @@ mkDotsModule {
         # Run the store binary directly; alpine has no entrypoint of its own.
         entrypoint = "/usr/local/bin/subsonic-auth";
         volumes = [ "${binary}/bin/subsonic-auth:/usr/local/bin/subsonic-auth:ro" ];
-        extraOptions = [
-          "--network=${cfg.network}"
-          "--ip"
-          cfg.ip
-        ];
         settings = {
           listenAddr = "0.0.0.0:${toString cfg.port}";
           upstream = cfg.upstream;

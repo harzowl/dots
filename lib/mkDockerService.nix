@@ -115,6 +115,39 @@
         '';
       };
 
+      network = opt "network" {
+        type = lib.types.nullOr (
+          lib.types.submodule {
+            options = {
+              name = lib.mkOption {
+                type = lib.types.str;
+                description = "Name of the user-defined docker network.";
+              };
+              subnet = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = ''
+                  Subnet to create the network with (`docker network create
+                  --subnet`). Declare it identically on every service that names
+                  the same network; it only needs to be set once per network.
+                '';
+              };
+              ip = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = "Static container IP on that network.";
+              };
+            };
+          }
+        );
+        default = null;
+        description = ''
+          Join a user-defined network, creating it if needed — one declaration
+          replaces an `extraOptions` `--network`/`--ip`, a host network unit, and
+          the `dependsOn` on it.
+        '';
+      };
+
       openFirewall = opt "openFirewall" {
         type = lib.types.bool;
         default = true;
@@ -159,12 +192,18 @@
       # "host" or "host:container" -> the host port (for the firewall).
       hostPort = p: lib.head (lib.splitString ":" (toString p));
 
+      # The declared network, if any: the container joins it and starts after it.
+      network = spec.network or null;
+
       # `dependsOn` -> systemd unit names. A bare service name is this backend's
       # container unit (`navidrome` -> `docker-navidrome.service`); an entry that
-      # already ends in `.service` is taken verbatim.
-      dependsOnUnits = map (d: if lib.hasSuffix ".service" d then d else "${spec.backend}-${d}.service") (
-        spec.dependsOn or [ ]
-      );
+      # already ends in `.service` is taken verbatim. The declared network is
+      # always appended so the container waits for it.
+      dependsOnUnits =
+        map (d: if lib.hasSuffix ".service" d then d else "${spec.backend}-${d}.service") (
+          spec.dependsOn or [ ]
+        )
+        ++ lib.optional (network != null) "docker-network-${network.name}.service";
     in
     {
       virtualisation = {
@@ -177,9 +216,18 @@
               image
               volumes
               cmd
-              extraOptions
               environmentFiles
               ;
+            # Join the declared network (with its static IP) if set.
+            extraOptions =
+              spec.extraOptions
+              ++ lib.optionals (network != null) (
+                [ "--network=${network.name}" ]
+                ++ lib.optionals (network.ip != null) [
+                  "--ip"
+                  network.ip
+                ]
+              );
             entrypoint = spec.entrypoint or null;
             inherit environment;
             ports = map (
@@ -235,6 +283,26 @@
           "${spec.backend}-${spec.name}" = {
             after = dependsOnUnits;
             requires = dependsOnUnits;
+          };
+        }
+        // lib.optionalAttrs (network != null) {
+          # Create the user-defined network once (idempotent); every service that
+          # names it declares the same unit, which the module system merges.
+          "docker-network-${network.name}" = {
+            description = "Create the `${network.name}` docker network";
+            after = [ "docker.service" ];
+            requires = [ "docker.service" ];
+            wantedBy = [ "multi-user.target" ];
+            path = [ pkgs.docker ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+            };
+            script = ''
+              docker network inspect ${network.name} >/dev/null 2>&1 || docker network create ${
+                lib.optionalString (network.subnet != null) "--subnet ${network.subnet} "
+              }${network.name}
+            '';
           };
         };
     };
