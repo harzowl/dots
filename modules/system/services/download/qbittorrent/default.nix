@@ -13,7 +13,7 @@ let
     openFirewall = false;
     # The LinuxServer base ships the Docker Mods hook, so this pulls the official
     # VueTorrent mod into /vuetorrent at container start.
-    settings.dockerMods = "ghcr.io/vuetorrent/vuetorrent-lsio-mod:latest";
+    dockerMods = [ "ghcr.io/vuetorrent/vuetorrent-lsio-mod:latest" ];
   };
 
   # qBittorrent only *serves* VueTorrent once it points its alternative WebUI at

@@ -103,6 +103,18 @@
         '';
       };
 
+      dockerMods = opt "dockerMods" {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "ghcr.io/vuetorrent/vuetorrent-lsio-mod:latest" ];
+        description = ''
+          LinuxServer `DOCKER_MODS` images, one reference per element. They are
+          joined with `|` (that env var's own separator, not the comma `settings`
+          lists produce) and installed at container start, so the image must be
+          built on the LinuxServer base.
+        '';
+      };
+
       dependsOn = opt "dependsOn" {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -242,7 +254,12 @@
         else
           toString v;
 
-      environment = lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) settings;
+      environment = lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) (
+        settings
+        // lib.optionalAttrs (spec.dockerMods or [ ] != [ ]) {
+          dockerMods = lib.concatStringsSep "|" spec.dockerMods;
+        }
+      );
 
       # "container", "host:container" or "ip:host:container" -> the host port
       # (for the firewall); the last segment is always the container port.
