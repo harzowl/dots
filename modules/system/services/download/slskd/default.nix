@@ -8,7 +8,7 @@ let
   defaults = {
     name = "slskd";
     image = "slskd/slskd:latest";
-    ports = [ 5030 ];
+    ports = [ "127.0.0.1:5030:5030" ];
     openFirewall = false;
   };
 in

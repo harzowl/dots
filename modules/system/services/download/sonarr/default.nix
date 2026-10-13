@@ -8,7 +8,7 @@ let
   defaults = {
     name = "sonarr";
     image = "lscr.io/linuxserver/sonarr:latest";
-    ports = [ 8989 ];
+    ports = [ "127.0.0.1:8989:8989" ];
     openFirewall = false;
   };
 in

@@ -8,7 +8,7 @@ let
   defaults = {
     name = "radarr";
     image = "lscr.io/linuxserver/radarr:latest";
-    ports = [ 7878 ];
+    ports = [ "127.0.0.1:7878:7878" ];
     openFirewall = false;
   };
 in

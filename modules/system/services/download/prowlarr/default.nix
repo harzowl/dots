@@ -8,7 +8,7 @@ let
   defaults = {
     name = "prowlarr";
     image = "lscr.io/linuxserver/prowlarr:latest";
-    ports = [ 9696 ];
+    ports = [ "127.0.0.1:9696:9696" ];
     openFirewall = false;
   };
 in

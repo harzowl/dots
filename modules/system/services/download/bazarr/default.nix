@@ -8,7 +8,7 @@ let
   defaults = {
     name = "bazarr";
     image = "lscr.io/linuxserver/bazarr:latest";
-    ports = [ 6767 ];
+    ports = [ "127.0.0.1:6767:6767" ];
     openFirewall = false;
   };
 in

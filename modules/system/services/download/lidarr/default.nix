@@ -8,7 +8,7 @@ let
   defaults = {
     name = "lidarr";
     image = "lscr.io/linuxserver/lidarr:latest";
-    ports = [ 8686 ];
+    ports = [ "127.0.0.1:8686:8686" ];
     openFirewall = false;
   };
 in
