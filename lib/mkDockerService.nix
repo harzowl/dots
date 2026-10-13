@@ -313,9 +313,7 @@
         };
       };
 
-      networking.firewall.allowedTCPPorts = lib.mkIf spec.openFirewall (
-        map (p: builtins.fromJSON (hostPort p)) spec.ports
-      );
+      networking.firewall.allowedTCPPorts = lib.mkIf spec.openFirewall (map hostPort spec.ports);
 
       # Restart the container when a runtime env file's *contents* change.
       #
