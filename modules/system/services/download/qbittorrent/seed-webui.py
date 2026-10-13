@@ -81,6 +81,11 @@ def encode(password: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--conf", required=True, help="path to qBittorrent.conf")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="report whether a change is needed, without writing",
+    )
     parser.add_argument("--env-file", help="dotenv file holding the WebUI password")
     parser.add_argument(
         "--env-key", default="QBITTORRENT_PASSWORD", help="key to read that password from"
@@ -148,7 +153,7 @@ def main() -> None:
             out.insert(at + offset, "{}={}".format(key, wanted[key]))
         changed = True
 
-    if changed:
+    if changed and not args.check:
         with open(args.conf, "w", encoding="utf-8") as handle:
             handle.write("\n".join(out) + "\n")
 

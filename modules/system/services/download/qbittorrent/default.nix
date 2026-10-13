@@ -118,9 +118,13 @@ mkDotsModule {
           serviceConfig.Type = "oneshot";
           script = ''
             set -eu
-            result="$(${pkgs.python3}/bin/python3 ${./seed-webui.py}${scriptArgs})"
-            if [ "$result" = changed ]; then
-              systemctl try-restart docker-${cfg.name}.service
+            if [ "$(${pkgs.python3}/bin/python3 ${./seed-webui.py}${scriptArgs} --check)" = changed ]; then
+              # qBittorrent rewrites its config when it exits, so it must not be
+              # running while the file is written or the change is clobbered on
+              # its next stop.
+              systemctl stop docker-${cfg.name}.service || true
+              ${pkgs.python3}/bin/python3 ${./seed-webui.py}${scriptArgs}
+              systemctl start docker-${cfg.name}.service
             fi
           '';
         };

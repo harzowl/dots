@@ -110,8 +110,12 @@
         description = ''
           LinuxServer `DOCKER_MODS` images, one reference per element. They are
           joined with `|` (that env var's own separator, not the comma `settings`
-          lists produce) and installed at container start, so the image must be
-          built on the LinuxServer base.
+          lists produce) and installed at container start.
+
+          **LinuxServer-base images only** — only they carry the
+          `S6_STAGE2_HOOK=/docker-mods` that installs the mods; on any other
+          image the variable is silently ignored. Enable it per service, only
+          where a mod is actually wanted, never as a blanket default.
         '';
       };
 
