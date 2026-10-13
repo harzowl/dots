@@ -9,14 +9,16 @@ that consuming hosts compose.
 every boot. It is a single toggle with an overridable size:
 
 ```nix
-{ dots.system.core.tmp = { useTmpfs = true; tmpfsSize = "512M"; }; }
+{ dots.system.core.tmp = { useTmpfs = true; reservedSize = "512M"; }; }
 ```
 
-`useTmpfs` defaults to `false` and `tmpfsSize` to `"1G"`. When `useTmpfs` is on,
-the module sets `boot.tmp.useTmpfs`, `boot.tmp.tmpfsSize` and
-`boot.tmp.cleanOnBoot` (the latter two `lib.mkDefault`, so a host can still pin
-them). The size is a cap, not a reservation, but tmpfs pages live in RAM — a host
-short on memory should lower it (`"50%"` follows systemd's percentage of RAM).
+`useTmpfs` defaults to `false` and `reservedSize` to `"256M"` — a safe default
+that fits even a small (≤1 GB) host. When `useTmpfs` is on, the module sets
+`boot.tmp.useTmpfs`, `boot.tmp.tmpfsSize` (the NixOS option keeps its kernel
+name) and `boot.tmp.cleanOnBoot` (the latter two `lib.mkDefault`, so a host can
+still pin them). Despite the name, `reservedSize` is a cap, not a reservation —
+tmpfs pages live in RAM on demand — so raise it only on a host with the memory
+headroom to back it (`"50%"` follows systemd's percentage of RAM).
 
 ## Adding a service — security checklist
 
