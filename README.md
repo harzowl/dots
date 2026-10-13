@@ -3,6 +3,21 @@
 Simplified NixOS system/home configuration — a module library (`dots.system.*`)
 that consuming hosts compose.
 
+## `/tmp` on tmpfs
+
+`dots.system.core.tmp` mounts `/tmp` as a RAM-backed tmpfs that is empty on
+every boot. It is a single toggle with an overridable size:
+
+```nix
+{ dots.system.core.tmp = { useTmpfs = true; tmpfsSize = "512M"; }; }
+```
+
+`useTmpfs` defaults to `false` and `tmpfsSize` to `"1G"`. When `useTmpfs` is on,
+the module sets `boot.tmp.useTmpfs`, `boot.tmp.tmpfsSize` and
+`boot.tmp.cleanOnBoot` (the latter two `lib.mkDefault`, so a host can still pin
+them). The size is a cap, not a reservation, but tmpfs pages live in RAM — a host
+short on memory should lower it (`"50%"` follows systemd's percentage of RAM).
+
 ## Adding a service — security checklist
 
 Work through this before a new service or vhost is called done. It encodes the
