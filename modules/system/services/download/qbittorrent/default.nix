@@ -1,5 +1,5 @@
 # qBittorrent — torrent client (LinuxServer image); its WebUI is :8080, served
-# with vuetorrent as the alternate WebUI. Only the service's own identity lives
+# with VueTorrent as the alternate WebUI. Only the service's own identity lives
 # here; the consumer supplies volumes, the environment (TZ/PUID/PGID) and how
 # it is fronted.
 let
@@ -11,7 +11,17 @@ let
     image = "lscr.io/linuxserver/qbittorrent:latest";
     ports = [ "127.0.0.1:8080:8080" ];
     openFirewall = false;
+    # The LinuxServer base ships the Docker Mods hook, so this pulls the official
+    # VueTorrent mod into /vuetorrent at container start.
+    settings.dockerMods = "ghcr.io/vuetorrent/vuetorrent-lsio-mod:latest";
   };
+
+  # qBittorrent only *serves* VueTorrent once it points its alternative WebUI at
+  # the mod's folder; the env var alone leaves the stock UI in place.
+  webUiPreferences = [
+    "WebUI\\AlternativeUIEnabled=true"
+    "WebUI\\RootFolder=/vuetorrent"
+  ];
 in
 mkDotsModule {
   optionPath = [
@@ -66,7 +76,26 @@ mkDotsModule {
         else
           "${lib.removeSuffix ":ro" (lib.removeSuffix ":/config" configMount)}/qBittorrent/qBittorrent.conf";
 
-      seed = cfg.webUiPasswordFile != null && configFile != null;
+      scriptArgs = lib.concatMapStrings (a: " " + a) (
+        [
+          "--conf"
+          (lib.escapeShellArg configFile)
+        ]
+        ++ lib.optionals (cfg.webUiPasswordFile != null) [
+          "--env-file"
+          (lib.escapeShellArg cfg.webUiPasswordFile)
+          "--env-key"
+          (lib.escapeShellArg cfg.webUiPasswordKey)
+        ]
+        ++ [
+          "--username"
+          (lib.escapeShellArg (if cfg.webUiUsername == null then "" else cfg.webUiUsername))
+        ]
+        ++ lib.concatMap (p: [
+          "--pref"
+          (lib.escapeShellArg p)
+        ]) webUiPreferences
+      );
     in
     lib.mkMerge [
       (mkDockerService.config {
@@ -74,9 +103,9 @@ mkDotsModule {
         inherit defaults;
       } args)
 
-      (lib.mkIf seed {
-        systemd.services."${cfg.name}-webui-password" = {
-          description = "Seed qBittorrent's WebUI password from a secret";
+      (lib.mkIf (configFile != null) {
+        systemd.services."${cfg.name}-webui" = {
+          description = "Seed qBittorrent's WebUI settings";
           wantedBy = [ "multi-user.target" ];
           after = [ "docker-${cfg.name}.service" ];
           wants = [ "docker-${cfg.name}.service" ];
@@ -89,11 +118,7 @@ mkDotsModule {
           serviceConfig.Type = "oneshot";
           script = ''
             set -eu
-            result="$(${pkgs.python3}/bin/python3 ${./seed-webui-password.py} \
-              --env-file ${lib.escapeShellArg cfg.webUiPasswordFile} \
-              --env-key ${lib.escapeShellArg cfg.webUiPasswordKey} \
-              --conf ${lib.escapeShellArg configFile} \
-              --username ${lib.escapeShellArg (if cfg.webUiUsername == null then "" else cfg.webUiUsername)})"
+            result="$(${pkgs.python3}/bin/python3 ${./seed-webui.py}${scriptArgs})"
             if [ "$result" = changed ]; then
               systemctl try-restart docker-${cfg.name}.service
             fi

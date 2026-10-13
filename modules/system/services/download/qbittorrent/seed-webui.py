@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Seed qBittorrent's WebUI credentials into its config file.
+"""Seed qBittorrent's WebUI settings into its config file.
 
-The LinuxServer image exposes no environment variable for the WebUI password, so
-the only declarative way in is the config's `WebUI\\Password_PBKDF2` key. The
-value written here is exactly what qBittorrent stores itself: PBKDF2-HMAC-SHA512,
-100000 iterations, a 16-byte salt and a 64-byte key, held as
-`@ByteArray(<salt base64>:<key base64>)`.
+Two things need writing into `qBittorrent.conf` that the LinuxServer image
+exposes no environment variable for:
+
+* the WebUI password — the image only accepts `WebUI\\Password_PBKDF2`, stored
+  the way qBittorrent itself stores it (PBKDF2-HMAC-SHA512, 100000 iterations,
+  16-byte salt, 64-byte key, as `@ByteArray(<salt base64>:<key base64>)`);
+* static preferences (e.g. the alternative-WebUI switch that activates the
+  VueTorrent mod), passed as `--pref KEY=VALUE`.
 
 The password is read from a dotenv file (the secretspec env), never from the
 command line, so it cannot leak into a process list or the journal.
 
-A value is only rewritten when the stored hash does not already verify the
-password, so the unit is idempotent. Prints `changed` when the config was
-rewritten, otherwise `unchanged`.
+A value is only rewritten when it is actually out of date, so the unit is
+idempotent and does not restart the container on every boot. Prints `changed`
+when the config was rewritten, otherwise `unchanged`.
 """
 
 import argparse
@@ -77,16 +80,39 @@ def encode(password: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--env-file", required=True, help="dotenv file holding the password")
-    parser.add_argument("--env-key", required=True, help="key to read from that file")
     parser.add_argument("--conf", required=True, help="path to qBittorrent.conf")
-    parser.add_argument("--username", default="", help="optional WebUI username to seed")
+    parser.add_argument("--env-file", help="dotenv file holding the WebUI password")
+    parser.add_argument(
+        "--env-key", default="QBITTORRENT_PASSWORD", help="key to read that password from"
+    )
+    parser.add_argument("--username", default="", help="WebUI username to seed")
+    parser.add_argument(
+        "--pref",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="a static preference to seed (repeatable)",
+    )
     args = parser.parse_args()
 
-    password = read_dotenv(args.env_file, args.env_key)
-    if not password:
-        print("unchanged")
-        return
+    # `None` marks a value we still have to derive (the hashed password).
+    wanted: dict[str, str | None] = {}
+    if args.username:
+        wanted[USERNAME_KEY] = args.username
+    for pref in args.pref:
+        key, sep, value = pref.partition("=")
+        if not sep:
+            parser.error("--pref needs KEY=VALUE, got {!r}".format(pref))
+        wanted[key] = value
+
+    password = read_dotenv(args.env_file, args.env_key) if args.env_file else ""
+    if password:
+        wanted[PASSWORD_KEY] = None
+
+    def rendered(key: str) -> str:
+        if wanted[key] is not None:
+            return wanted[key]
+        return '"{}"'.format(encode(password))
 
     try:
         with open(args.conf, encoding="utf-8") as handle:
@@ -94,26 +120,21 @@ def main() -> None:
     except FileNotFoundError:
         lines = []
 
-    # What we want present, keyed by config key. `None` marks a key we still owe.
-    wanted = {PASSWORD_KEY: None}
-    if args.username:
-        wanted[USERNAME_KEY] = args.username
-
-    out, changed = [], False
+    out, changed, seen = [], False, set()
     for line in lines:
         key, sep, current = line.partition("=")
         if sep and key in wanted:
-            if key == PASSWORD_KEY:
-                if verifies(current, password):
-                    wanted[key] = current
-                else:
-                    current, wanted[key], changed = '"{}"'.format(encode(password)), "known", True
+            seen.add(key)
+            if key == PASSWORD_KEY and password and verifies(current, password):
+                wanted[key] = current  # already correct: keep the stored hash
+            elif key == PASSWORD_KEY and password:
+                current, wanted[key], changed = rendered(key), "known", True
             elif current != wanted[key]:
                 current, changed = wanted[key], True
             line = "{}={}".format(key, current)
         out.append(line)
 
-    missing = [key for key, value in wanted.items() if value is None]
+    missing = [key for key in wanted if key not in seen]
     if missing:
         try:
             at = out.index(GROUP) + 1
@@ -123,8 +144,8 @@ def main() -> None:
             out += [GROUP]
             at = len(out)
         for offset, key in enumerate(missing):
-            value = '"{}"'.format(encode(password)) if key == PASSWORD_KEY else wanted[key]
-            out.insert(at + offset, "{}={}".format(key, value))
+            wanted[key] = rendered(key)
+            out.insert(at + offset, "{}={}".format(key, wanted[key]))
         changed = True
 
     if changed:
