@@ -71,30 +71,21 @@ if [ -n "${PROFILE}" ]; then
   kcadm update users/profile -r "${REALM}" -f /tmp/profile.json || true
 fi
 
-# Authoritative: exactly the declared users are admins — grant the declared,
-# revoke anyone else — so removing a name actually removes the role. An admin
-# holds both the `realm-management`/`realm-admin` client role (the console) and
-# the realm role `admin` (what the admin-only gates check).
+# Authoritative: `realm-admin` is held by exactly the declared users — grant the
+# declared, revoke anyone else — so removing a name actually removes the role.
 declared_admins="@REALM_ADMINS@"
 for u in $(kcadm get users -r "${REALM}" --fields username --format csv 2>/dev/null | tr -d '"\r'); do
   if kcadm get-roles -r "${REALM}" --uusername "$u" --cclientid realm-management 2>/dev/null | grep -q realm-admin; then
-    has_client=yes
+    has=yes
   else
-    has_client=no
-  fi
-  if kcadm get-roles -r "${REALM}" --uusername "$u" 2>/dev/null | grep -q '"name" *: *"admin"'; then
-    has_realm=yes
-  else
-    has_realm=no
+    has=no
   fi
   case " ${declared_admins} " in
     *" ${u} "*)
-      [ "${has_client}" = yes ] || kcadm add-roles -r "${REALM}" --uusername "$u" --cclientid realm-management --rolename realm-admin || true
-      [ "${has_realm}" = yes ] || kcadm add-roles -r "${REALM}" --uusername "$u" --rolename admin || true
+      [ "${has}" = yes ] || kcadm add-roles -r "${REALM}" --uusername "$u" --cclientid realm-management --rolename realm-admin || true
       ;;
     *)
-      [ "${has_client}" = no ] || kcadm remove-roles -r "${REALM}" --uusername "$u" --cclientid realm-management --rolename realm-admin || true
-      [ "${has_realm}" = no ] || kcadm remove-roles -r "${REALM}" --uusername "$u" --rolename admin || true
+      [ "${has}" = no ] || kcadm remove-roles -r "${REALM}" --uusername "$u" --cclientid realm-management --rolename realm-admin || true
       ;;
   esac
 done
