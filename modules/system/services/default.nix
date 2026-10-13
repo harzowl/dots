@@ -3,6 +3,7 @@
     ./access
     ./auth
     ./dashboard
+    ./download
     ./mail
     ./minecraft
     ./mozhi
