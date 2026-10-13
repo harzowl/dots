@@ -32,6 +32,7 @@ let
     network = {
       name = "host";
     };
+    environmentFiles = [ "/run/secretspec/env" ];
   };
 
   optionType = lib.types.submodule {
@@ -97,8 +98,22 @@ in
           environmentFiles
           ;
         extraOptions = g.extraOptions ++ (wire name g).networkArgs;
+        # Every gate shares one Keycloak/OIDC config; a gate supplies only what
+        # is its own (client id, upstream, redirect URL, extra roles).
         environment = lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) (
-          { oauth2ProxyHttpAddress = "0.0.0.0:${toString g.port}"; } // g.settings
+          {
+            oauth2ProxyHttpAddress = "0.0.0.0:${toString g.port}";
+            oauth2ProxyProvider = "keycloak-oidc";
+            oauth2ProxyOidcIssuerUrl = "https://auth.${config.dots.system.core.domain}/realms/${config.dots.system.core.realm}";
+            oauth2ProxyEmailDomains = "*";
+            oauth2ProxyReverseProxy = true;
+            oauth2ProxySetXauthrequest = true;
+            oauth2ProxyWhitelistDomains = ".${config.dots.system.core.domain}";
+            oauth2ProxyCookieSecure = true;
+            oauth2ProxySkipProviderButton = true;
+            oauth2ProxyExcludeLoggingPaths = [ "/oauth2/callback" ];
+          }
+          // g.settings
         );
         ports = map (
           p:

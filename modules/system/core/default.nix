@@ -3,6 +3,7 @@
   imports = [
     ./domain
     ./hostname
+    ./realm
     ./state
     ./timezone
     ./tmp

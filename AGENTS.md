@@ -49,6 +49,16 @@ Every commit follows [Conventional Commits](https://www.conventionalcommits.org/
   or any other config goes in its own file beside the module (`keycloak/reconcile.sh`,
   a `caddy/*.conf`) and is referenced, never inlined as a `''…''` string.
   Host-derived values are `@PLACEHOLDER@`s the caller substitutes.
+- **A module defaults only what is inherent to the service.** Its name, image
+  and port — nothing environmental. Timezone, PUID/PGID, umask, host paths
+  (`/var/lib/…`), secrets and the network/firewall shape are the **consumer's**
+  and must not appear as a default in `dots`. A literal that already has a home
+  elsewhere (the timezone lives in the consuming repo's preset) is *referenced*,
+  never retyped here.
+- **A module owns its service's shared configuration.** A setting every consumer
+  would otherwise restate — an issuer URL, a provider, a scope, common env — is
+  a **module default**, so a consumer names only what is its own. If two hosts
+  repeat the same block, the module is missing a default.
 - **Never hardcode what an option can carry.** A literal IP, port, hostname or
   path in a module (or a host file) is a bug: it cannot be changed in one place
   and it will drift. Give it an option (or reference the one that already
