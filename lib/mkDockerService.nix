@@ -244,8 +244,14 @@
 
       environment = lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) settings;
 
-      # "host" or "host:container" -> the host port (for the firewall).
-      hostPort = p: lib.head (lib.splitString ":" (toString p));
+      # "container", "host:container" or "ip:host:container" -> the host port
+      # (for the firewall); the last segment is always the container port.
+      hostPort =
+        p:
+        let
+          parts = lib.splitString ":" (toString p);
+        in
+        lib.toInt (lib.elemAt parts (lib.max 0 (lib.length parts - 2)));
 
       # The declared network, if any: the container joins it and starts after it.
       network = spec.network or null;
