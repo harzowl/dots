@@ -162,9 +162,9 @@
       # `dependsOn` -> systemd unit names. A bare service name is this backend's
       # container unit (`navidrome` -> `docker-navidrome.service`); an entry that
       # already ends in `.service` is taken verbatim.
-      dependsOnUnits = map (
-        d: if lib.hasSuffix ".service" d then d else "${spec.backend}-${d}.service"
-      ) spec.dependsOn;
+      dependsOnUnits = map (d: if lib.hasSuffix ".service" d then d else "${spec.backend}-${d}.service") (
+        spec.dependsOn or [ ]
+      );
     in
     {
       virtualisation = {
