@@ -1,7 +1,7 @@
 # oauth2-proxy — OIDC reverse-proxy gates for apps without native SSO (Glance,
 # Navidrome, …). Each entry under `gates` is its own container: it runs the OIDC
-# login and proxies to one upstream app, so front a service by declaring one gate
-# per app:
+# login and proxies to one upstream app, so front a service by declaring one
+# gate per app:
 #
 #   dots.system.services.auth.oauth2-proxy.gates.glance = {
 #     enable = true;
@@ -9,72 +9,38 @@
 #     settings = { oauth2ProxyUpstreams = "http://127.0.0.1:8082"; … };
 #   };
 #
-# Gates default to the host network (so they reach the app on the host and are
-# reachable by the front proxy) and `port` is opened in the firewall; set
-# `network` + `ip` to run a gate on a user-defined network with a static address.
-# The config is host-supplied via `settings` (camelCase becomes `OAUTH2_PROXY_*`),
-# and the client/cookie secrets arrive as `OAUTH2_PROXY_CLIENT_SECRET` /
+# The options are the shared container-service ones (`mkDockerService.options`),
+# so a gate takes the same `network`, `dependsOn`, `settings`, … as any other
+# service. A gate defaults to the host network — `network = { name = "host"; }`
+# — so it reaches the app on `127.0.0.1` and is reachable by the front proxy;
+# set `network = { name = …; subnet = …; ip = …; }` for a user-defined network
+# with a static address, and the network's unit + the gate's ordering come from
+# `mkDockerService.ordering`. `port` is published and opened in the firewall.
+# The client/cookie secrets arrive as `OAUTH2_PROXY_CLIENT_SECRET` /
 # `OAUTH2_PROXY_COOKIE_SECRET` from an env file (the secretspec env file).
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
+  mkDockerService = import ../../../../../lib/mkDockerService.nix;
+
+  defaults = {
+    image = "quay.io/oauth2-proxy/oauth2-proxy:latest";
+    network = {
+      name = "host";
+    };
+  };
+
   optionType = lib.types.submodule {
-    options = {
+    options = (mkDockerService.options { inherit lib defaults; }) // {
       enable = lib.mkEnableOption "this oauth2-proxy gate";
-      image = lib.mkOption {
-        type = lib.types.str;
-        default = "quay.io/oauth2-proxy/oauth2-proxy:latest";
-      };
       port = lib.mkOption {
         type = lib.types.port;
         default = 4180;
-        description = "Port oauth2-proxy listens on (opened in the firewall).";
-      };
-      network = lib.mkOption {
-        type = lib.types.str;
-        default = "host";
-        description = ''
-          Docker network the gate runs on. Default `"host"` (reaches the app on
-          `127.0.0.1` and is reachable by the front proxy). Set a user-defined
-          network to give the gate a container IP — the app can then trust that
-          IP as the only source allowed to set the auth header.
-        '';
-      };
-      ip = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = ''
-          Static IPv4 to assign when `network` is a user-defined network (passed
-          as `--ip`). Lets the upstream trust a single address.
-        '';
-      };
-      ports = lib.mkOption {
-        type = lib.types.listOf (lib.types.either lib.types.port lib.types.str);
-        default = [ ];
-      };
-      volumes = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ ];
-      };
-      environmentFiles = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ ];
-      };
-      cmd = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ ];
-      };
-      settings = lib.mkOption {
-        type = lib.types.attrsOf lib.types.anything;
-        default = { };
-      };
-      dependsOn = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ ];
-        description = ''
-          Services (or systemd units) the gate is started after — a bare name is
-          the `docker-<name>.service` container unit; an entry ending in
-          `.service` is used verbatim (e.g. a host network unit).
-        '';
+        description = "Port oauth2-proxy listens on (published and opened in the firewall).";
       };
     };
   };
@@ -98,8 +64,6 @@ let
       lib.concatStringsSep "," (map toString v)
     else
       toString v;
-
-  hostPort = p: lib.head (lib.splitString ":" (toString p));
 in
 {
   options.dots.system.services.auth.oauth2-proxy = {
@@ -112,22 +76,27 @@ in
 
   config =
     let
-      enabled = lib.filterAttrs (_: g: g.enable) config.dots.system.services.auth.oauth2-proxy.gates;
+      gates = config.dots.system.services.auth.oauth2-proxy.gates;
+      enabled = lib.filterAttrs (_: g: g.enable) gates;
 
-      mkContainer = g: {
+      # The option-derived network args + ordering, shared with mkDockerService.
+      wire =
+        name: g:
+        mkDockerService.ordering {
+          inherit lib pkgs;
+          spec = g // {
+            name = "oauth2-proxy-${name}";
+          };
+        };
+
+      container = name: g: {
         inherit (g)
           image
           volumes
           cmd
           environmentFiles
           ;
-        extraOptions = [
-          "--network=${g.network}"
-        ]
-        ++ lib.optionals (g.ip != null) [
-          "--ip"
-          g.ip
-        ];
+        extraOptions = g.extraOptions ++ (wire name g).networkArgs;
         environment = lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) (
           { oauth2ProxyHttpAddress = "0.0.0.0:${toString g.port}"; } // g.settings
         );
@@ -137,39 +106,31 @@ in
             s = toString p;
           in
           if lib.hasInfix ":" s then s else "${s}:${s}"
-        ) g.ports;
+        ) [ g.port ];
       };
     in
-    lib.mkIf (enabled != { }) {
-      virtualisation.docker.enable = true;
-
-      virtualisation.oci-containers = {
-        backend = "docker";
-        containers = lib.mapAttrs' (
-          name: g: lib.nameValuePair "oauth2-proxy-${name}" (mkContainer g)
-        ) enabled;
-      };
+    {
+      virtualisation.oci-containers.containers = lib.mapAttrs' (
+        name: g: lib.nameValuePair "oauth2-proxy-${name}" (lib.mkIf g.enable (container name g))
+      ) gates;
 
       networking.firewall.allowedTCPPorts = map (g: g.port) (lib.attrValues enabled);
 
-      # A gate can't start until the IdP answers OIDC discovery, so a Keycloak
-      # (re)start would otherwise kill it for good: disable the start-rate limit
-      # so the unit keeps retrying until the IdP is back.
-      systemd.services = lib.mapAttrs' (
-        name: g:
-        let
-          dependsOn = map (d: if lib.hasSuffix ".service" d then d else "docker-${d}.service") g.dependsOn;
-        in
-        lib.nameValuePair "docker-oauth2-proxy-${name}" (
-          {
+      systemd.services =
+        lib.mapAttrs' (
+          name: g:
+          lib.nameValuePair "docker-oauth2-proxy-${name}" {
+            after = (wire name g).units;
+            requires = (wire name g).units;
+            # A gate can't start until the IdP answers OIDC discovery, so a
+            # Keycloak (re)start would otherwise kill it for good: disable the
+            # start-rate limit so the unit keeps retrying until the IdP is back.
             startLimitIntervalSec = 0;
             serviceConfig.RestartSec = 5;
           }
-          // lib.optionalAttrs (dependsOn != [ ]) {
-            after = dependsOn;
-            requires = dependsOn;
-          }
-        )
-      ) enabled;
+        ) enabled
+        // lib.foldl' (acc: name: acc // (wire name enabled.${name}).networkUnit) { } (
+          lib.attrNames enabled
+        );
     };
 }

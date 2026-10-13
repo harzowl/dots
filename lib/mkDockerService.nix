@@ -155,6 +155,61 @@
       };
     };
 
+  # The option-derived wiring a container needs — the `--network`/`--ip` run
+  # args, the `after`/`requires` unit list (`dependsOn` plus a user-defined
+  # network's unit), and that network's creating unit. Exported so a module that
+  # builds its own container (the oauth2-proxy gates) reuses the same ordering
+  # instead of re-implementing it.
+  ordering =
+    {
+      lib,
+      pkgs,
+      spec,
+      backend ? spec.backend or "docker",
+    }:
+    let
+      network = spec.network or null;
+      managedNetwork =
+        network != null
+        && !(builtins.elem network.name [
+          "host"
+          "none"
+          "bridge"
+        ]);
+      units =
+        map (d: if lib.hasSuffix ".service" d then d else "${backend}-${d}.service") (spec.dependsOn or [ ])
+        ++ lib.optional managedNetwork "docker-network-${network.name}.service";
+    in
+    {
+      networkArgs = lib.optionals (network != null) (
+        [ "--network=${network.name}" ]
+        ++ lib.optionals (network.ip != null) [
+          "--ip"
+          network.ip
+        ]
+      );
+      # Both `after` and `requires` are this list.
+      inherit units;
+      networkUnit = lib.optionalAttrs managedNetwork {
+        "docker-network-${network.name}" = {
+          description = "Create the `${network.name}` docker network";
+          after = [ "docker.service" ];
+          requires = [ "docker.service" ];
+          wantedBy = [ "multi-user.target" ];
+          path = [ pkgs.docker ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+          };
+          script = ''
+            docker network inspect ${network.name} >/dev/null 2>&1 || docker network create ${
+              lib.optionalString (network.subnet != null) "--subnet ${network.subnet} "
+            }${network.name}
+          '';
+        };
+      };
+    };
+
   config =
     {
       spec,
