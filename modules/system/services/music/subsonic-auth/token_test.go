@@ -72,12 +72,13 @@ func TestSignedTokenTamperRejected(t *testing.T) {
 	s := testSigner(t, time.Hour)
 	tok, _ := s.Sign("dummy-DO-NOT-USE@example.invalid")
 	parts := strings.Split(tok, ".")
-	// Flip the last character of the payload; the signature must no longer match.
+	// Flip the FIRST character: the last one carries base64url padding bits that
+	// may not change the decoded bytes, leaving the tamper byte-identical.
 	flip := func(seg string) string {
-		if seg[len(seg)-1] == 'A' {
-			return seg[:len(seg)-1] + "B"
+		if seg[0] == 'A' {
+			return "B" + seg[1:]
 		}
-		return seg[:len(seg)-1] + "A"
+		return "A" + seg[1:]
 	}
 	tests := map[string]string{
 		"payload":   parts[0] + "." + parts[1] + "." + flip(parts[2]) + "." + parts[3],
