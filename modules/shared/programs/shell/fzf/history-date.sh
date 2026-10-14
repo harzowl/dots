@@ -3,8 +3,8 @@
 # zsh and bash readers live here too so no shell repeats the formatting.
 #
 # Records are NUL-framed and the command is never touched, so a multi-line
-# command survives as one record. `@DATE@` is filled in with coreutils' `date`
-# by the module (BSD/macOS `date` syntax is not supported).
+# command survives as one record. The module wires in GNU coreutils' `date`
+# (BSD/macOS `date` syntax is not supported).
 set -u
 
 fmt() {
