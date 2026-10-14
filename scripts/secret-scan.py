@@ -13,8 +13,8 @@ A match is a finding only when it is long (>= 40 chars), high-entropy
 ordinary long identifiers (CamelCase, no digits), Store/nar hashes and the
 `dummy-DO-NOT-USE-...` placeholder convention do not trip it. It also flags a
 few literal credential prefixes outright, and any email address that is not on
-a reserved example domain (or a GitHub noreply host) — a real personal address
-is a leak even when it carries no credential shape.
+a reserved example domain or a public forge host — a real personal address is a
+leak even when it carries no credential shape.
 
 Usage: secret-scan.py [PATH ...]   (defaults to the current directory)
 Exit status: 0 clean, 1 findings, 2 usage error.
@@ -74,8 +74,8 @@ ALLOW_PATH = re.compile(
 )
 
 # Every address must live on a reserved example domain (RFC 2606/6761) or a
-# privacy-preserving noreply host. A real personal address is a leak, so this
-# runs before the line allowlist — a stray `example` on the same line must not
+# public forge/service host. A real personal address is a leak, so this runs
+# before the line allowlist — a stray `example` on the same line must not
 # shield a real address. The percent-encoded form (`%40`) hides the same leak
 # inside a URL query string.
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
@@ -84,21 +84,26 @@ RESERVED_DOMAIN = re.compile(
     r"(?:^|\.)(?:example\.(?:com|net|org|edu)|invalid|test|localhost|example)$",
     re.IGNORECASE,
 )
-NOREPLY_DOMAIN = re.compile(r"\.noreply\.github\.com$", re.IGNORECASE)
+# Public forge hosts are generic service addresses (`git@github.com`), not
+# personal identity.
+PUBLIC_SERVICE_DOMAIN = re.compile(
+    r"(?:^|\.)(?:github\.com|gitlab\.com|codeberg\.org)$",
+    re.IGNORECASE,
+)
 
 
-def is_reserved_email(domain: str) -> bool:
-    return bool(RESERVED_DOMAIN.search(domain) or NOREPLY_DOMAIN.search(domain))
+def is_allowed_domain(domain: str) -> bool:
+    return bool(RESERVED_DOMAIN.search(domain) or PUBLIC_SERVICE_DOMAIN.search(domain))
 
 
 def non_example_email(line: str) -> str | None:
-    """The finding label for the first non-reserved address on the line, if any."""
+    """The finding label for the first non-allowed address on the line, if any."""
     for pattern, label in (
         (EMAIL, "non-example email address"),
         (EMAIL_ENCODED, "non-example email address (percent-encoded)"),
     ):
         for match in pattern.finditer(line):
-            if not is_reserved_email(match.group(1)):
+            if not is_allowed_domain(match.group(1)):
                 return label
     return None
 
