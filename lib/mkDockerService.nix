@@ -53,6 +53,18 @@
         description = "Published TCP ports, `host` (1:1) or `host:container`.";
       };
 
+      udpPorts = opt "udpPorts" {
+        type = lib.types.listOf (lib.types.either lib.types.port lib.types.str);
+        default = [ ];
+        example = [ "6881" ];
+        description = ''
+          Published UDP ports, in the same `host` (1:1) or `host:container` form
+          as `ports`. The container gets them published `/udp` and the firewall
+          opens them with `allowedUDPPorts` — a separate option because the
+          firewall keeps TCP and UDP apart.
+        '';
+      };
+
       volumes = opt "volumes" {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -272,7 +284,7 @@
         let
           parts = lib.splitString ":" (toString p);
         in
-        lib.toInt (lib.elemAt parts (lib.max 0 (lib.length parts - 2)));
+        lib.toInt (lib.removeSuffix "/udp" (lib.elemAt parts (lib.max 0 (lib.length parts - 2))));
 
       # The declared network, if any: the container joins it and starts after it.
       network = spec.network or null;
@@ -323,18 +335,27 @@
               );
             entrypoint = spec.entrypoint or null;
             inherit environment;
-            ports = map (
-              p:
-              let
-                s = toString p;
-              in
-              if lib.hasInfix ":" s then s else "${s}:${s}"
-            ) spec.ports;
+            ports =
+              map (
+                p:
+                let
+                  s = toString p;
+                in
+                if lib.hasInfix ":" s then s else "${s}:${s}"
+              ) spec.ports
+              ++ map (
+                p:
+                let
+                  s = toString p;
+                in
+                if lib.hasInfix ":" s then "${s}/udp" else "${s}:${s}/udp"
+              ) spec.udpPorts;
           };
         };
       };
 
       networking.firewall.allowedTCPPorts = lib.mkIf spec.openFirewall (map hostPort spec.ports);
+      networking.firewall.allowedUDPPorts = lib.mkIf spec.openFirewall (map hostPort spec.udpPorts);
 
       # Restart the container when a runtime env file's *contents* change.
       #
