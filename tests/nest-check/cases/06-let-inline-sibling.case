@@ -1,0 +1,8 @@
+{
+  services.nginx.enable = true;
+  environment.systemPackages = let
+    extra = [ pkgs.hello ];
+  in
+  extra;
+  services.nginx.user = "nginx";
+}

@@ -1,0 +1,10 @@
+{
+  environment.variables.EDITOR = "nvim";
+  programs.bash.sessionVariables = {
+    PATH = let
+      base = "/run/current-system/sw/bin";
+    in
+    "${base}:$PATH";
+  };
+  environment.variables.PAGER = "less";
+}
