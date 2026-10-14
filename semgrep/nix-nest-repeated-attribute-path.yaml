@@ -1,0 +1,19 @@
+rules:
+  # Semgrep has no Nix parser, so this matches the file as `generic` text — like
+  # the html rules do for inline scripts.
+  - id: nix-nest-repeated-attribute-path
+    languages:
+      - generic
+    paths:
+      include:
+        - '*.nix'
+    severity: WARNING
+    message: >-
+      Consecutive assignments repeat the same attribute path. Nest it once —
+      `networking.firewall = { allowedTCPPorts = …; allowedUDPPorts = …; };` —
+      so the prefix is written once and adding a field cannot drift.
+    # `|-` (not `|`): a block scalar's trailing newline would silently become
+    # part of the regex and stop it matching. Matches a dotted path of three or
+    # more segments whose prefix repeats at the start of the next line.
+    pattern-regex: |-
+      (?m)^[ \t]*([A-Za-z_][A-Za-z0-9_'-]*(?:\.[A-Za-z_][A-Za-z0-9_'-]*)+)\.[A-Za-z_][A-Za-z0-9_'-]*[ \t]*=[^\n]*\n[ \t]*\1\.

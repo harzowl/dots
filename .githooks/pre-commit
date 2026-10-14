@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Format staged Nix files with the flake's formatter, then re-stage them.
+# Format staged Nix files with the flake's formatter and re-stage them, then run
+# the repo's semgrep rules over them. Nix is not a semgrep language, so those
+# rules match `*.nix` as generic text.
 set -euo pipefail
 
 files=$(git diff --cached --name-only --diff-filter=ACM -- '*.nix')
@@ -9,3 +11,10 @@ files=$(git diff --cached --name-only --diff-filter=ACM -- '*.nix')
 nix fmt -- $files
 # shellcheck disable=SC2086
 git add -- $files
+
+if command -v semgrep >/dev/null 2>&1; then
+  # shellcheck disable=SC2086
+  semgrep --config semgrep --error $files
+else
+  echo "pre-commit: semgrep is not on PATH — skipping the rule checks" >&2
+fi

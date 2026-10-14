@@ -64,6 +64,11 @@ Every commit follows [Conventional Commits](https://www.conventionalcommits.org/
   and it will drift. Give it an option (or reference the one that already
   exists) and derive from it. Duplication is the thing to hunt, not just
   addresses.
+- **Nest a repeated attribute path; never write it per line.** Two adjacent
+  assignments that share a prefix belong in one attrset —
+  `networking.firewall = { allowedTCPPorts = …; allowedUDPPorts = …; };` — not
+  two dotted lines. `semgrep/nix-nest-repeated-attribute-path.yaml` (run by the
+  pre-commit hook) fails the commit that does otherwise.
 - **A comment must earn its place.** Comment only a non-obvious *why* — a
   security invariant, a footgun, a workaround — never what the code already
   says, never structure, never the next line. If deleting it loses no
