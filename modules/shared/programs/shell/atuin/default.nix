@@ -49,6 +49,19 @@ mkSharedProgram {
         description = "Contents of atuin's `config.toml`.";
       };
 
+      theme = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "autumn";
+        description = ''
+          atuin's `[theme] name`: a built-in (`default`, `autumn`, `marine`,
+          `default-powershell`, `(none)`) or a theme file in
+          `~/.config/atuin/themes/`. `null` leaves atuin's own default, whose
+          colours are ANSI palette entries — so they follow the terminal's
+          scheme rather than hardcoding hex.
+        '';
+      };
+
       flags = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -61,10 +74,14 @@ mkSharedProgram {
   home = args: cfg: {
     programs.atuin = {
       enable = true;
-      inherit (cfg)
-        package
-        settings
-        ;
+      inherit (cfg) package;
+      settings =
+        cfg.settings
+        // args.lib.optionalAttrs (cfg.theme != null) {
+          theme = (cfg.settings.theme or { }) // {
+            name = cfg.theme;
+          };
+        };
       flags = cfg.flags ++ args.lib.optional (!cfg.replaceNativeSearch) "--disable-ctrl-r";
       enableFishIntegration = true;
       enableBashIntegration = true;
