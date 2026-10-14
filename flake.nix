@@ -101,6 +101,29 @@
               python3 ${self}/scripts/secret-scan.py ${self}
               touch "$out"
             '';
+
+        # The fixture suites for both guards — the email-domain rule in
+        # secret-scan.py and the derived-identity check — so a regression in
+        # either fails the build rather than only a local run.
+        guards =
+          let
+            pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+          in
+          pkgs.runCommand "guards"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.git
+                pkgs.gnugrep
+                pkgs.gnused
+                pkgs.python3
+              ];
+            }
+            ''
+              bash ${self}/tests/secret-scan/run.sh
+              bash ${self}/tests/personal-data/run.sh
+              touch "$out"
+            '';
       };
     };
 }
