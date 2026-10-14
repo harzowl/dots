@@ -1,0 +1,5 @@
+{
+  doc = "a.b = 1; a.c = 2; and \"escaped quotes\" stay in the string";
+  note = "${lib.optionalString (cond != "") "a.b = 1;"}";
+  real = 1;
+}

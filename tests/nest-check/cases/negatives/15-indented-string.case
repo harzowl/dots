@@ -1,0 +1,10 @@
+{
+  script = ''
+    set -eu
+    echo "literal ''${NOT_INTERP}" # not a comment inside the string
+    printf '%s' '''quoted''' ''\backslash
+    networking.firewall.allowedTCPPorts = 22;
+    networking.firewall.allowedUDPPorts = 51820;
+  '';
+  real = 1;
+}

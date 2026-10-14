@@ -1,0 +1,11 @@
+{
+  systemd.tmpfiles.rules = [ "d /var/lib/x 0700 root root - -" ];
+
+  systemd.services.stalwart = {
+    wantedBy = [ "multi-user.target" ];
+  };
+
+  systemd.services.stalwart-provision = {
+    after = [ "stalwart.service" ];
+  };
+}

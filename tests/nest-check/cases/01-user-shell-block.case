@@ -1,0 +1,10 @@
+{
+          shell.atuin = {
+            enable = true;
+            replaceNativeSearch = true;
+            theme = "default";
+            settings = { style = "compact"; inline_height = 5; };
+          };
+
+          shell.zoxide.enable = true;
+}

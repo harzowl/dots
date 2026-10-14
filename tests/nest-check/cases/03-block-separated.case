@@ -1,0 +1,10 @@
+{
+  networking.firewall.allowedTCPPorts = map hostPort spec.ports;
+
+  extra = {
+    keep = true;
+    other = 3;
+  };
+
+  networking.firewall.allowedUDPPorts = map hostPort (spec.udpPorts or [ ]);
+}

@@ -1,0 +1,6 @@
+let
+  cfg.bind = 1;
+in
+{
+  cfg.apply = cfg.bind;
+}

@@ -1,0 +1,11 @@
+{ lib, shell, ... }:
+{
+  programs = lib.mkMerge [
+    (lib.optionalAttrs (shell == "fish") {
+      programs.shell.fish.enable = lib.mkDefault true;
+    })
+    (lib.optionalAttrs (shell == "zsh") {
+      programs.shell.zsh.enable = lib.mkDefault true;
+    })
+  ];
+}

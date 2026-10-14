@@ -1,0 +1,7 @@
+{
+  choice =
+    if cond then
+      { a.b = 1; }
+    else
+      { a.c = 2; };
+}

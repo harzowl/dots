@@ -1,0 +1,8 @@
+{
+  one = {
+    shared.alpha = 1;
+  };
+  two = {
+    shared.beta = 2;
+  };
+}
