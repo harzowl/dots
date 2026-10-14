@@ -127,6 +127,10 @@ done
 if [ -n "${SERVICE_ACCOUNT_ROLES}" ]; then
   jq -r '.[] | "\(.clientId) \(.client) \(.roles | join(","))"' "${SERVICE_ACCOUNT_ROLES}" 2>/dev/null |
     while read -r cid client roles; do
+      scid="$(kcadm get clients -r "${REALM}" 2>/dev/null | jq -r --arg c "${cid}" '.[] | select(.clientId == $c) | .id' | head -1)"
+      [ -n "${scid}" ] || continue
+      # The service-account user is only materialised on first access.
+      kcadm get "clients/${scid}/service-account-user" -r "${REALM}" >/dev/null 2>&1 || true
       for r in $(printf '%s' "${roles}" | tr ',' ' '); do
         kcadm add-roles -r "${REALM}" --uusername "service-account-${cid}" \
           --cclientid "${client}" --rolename "${r}" >/dev/null 2>&1 || true
