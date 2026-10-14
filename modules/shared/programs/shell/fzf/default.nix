@@ -39,6 +39,17 @@ mkSharedProgram {
         '';
       };
 
+      datedHistory = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Replace Ctrl-R with a history search that shows a human-readable
+          local date per entry (read from the shell's own history) and inserts
+          only the command. Takes effect only when `replaceNativeSearch` is
+          also set; `false` keeps fzf's stock history widget.
+        '';
+      };
+
       defaultOptions = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -52,19 +63,44 @@ mkSharedProgram {
       };
     };
 
-  home = args: cfg: {
-    programs.fzf = {
-      enable = true;
-      inherit (cfg)
-        package
-        defaultCommand
-        defaultOptions
-        ;
-      enableFishIntegration = cfg.replaceNativeSearch;
-      enableBashIntegration = cfg.replaceNativeSearch;
-      enableZshIntegration = cfg.replaceNativeSearch;
+  home =
+    args: cfg:
+    let
+      inherit (args) lib pkgs;
+
+      # One formatter, shared by every shell: each shell's reader emits
+      # `<epoch>\t<command>` and this renders the date. `@DATE@` pins GNU
+      # coreutils' `date`, whose `-d @epoch` the readers rely on.
+      historyDate = pkgs.writeShellScript "history-date" (
+        lib.replaceStrings [ "@DATE@" ] [ "${pkgs.coreutils}/bin/date" ] (
+          builtins.readFile ./history-date.sh
+        )
+      );
+
+      widget =
+        file:
+        lib.mkAfter (lib.replaceStrings [ "@HISTORY_DATE@" ] [ "${historyDate}" ] (builtins.readFile file));
+
+      enabled = cfg.replaceNativeSearch && cfg.datedHistory;
+    in
+    {
+      programs = {
+        fzf = {
+          enable = true;
+          inherit (cfg)
+            package
+            defaultCommand
+            defaultOptions
+            ;
+          enableFishIntegration = cfg.replaceNativeSearch;
+          enableBashIntegration = cfg.replaceNativeSearch;
+          enableZshIntegration = cfg.replaceNativeSearch;
+        };
+
+        fish.interactiveShellInit = lib.mkIf enabled (widget ./history.fish);
+        zsh.initContent = lib.mkIf enabled (widget ./history.zsh);
+      };
     };
-  };
 
   system = args: cfg: { environment.systemPackages = [ cfg.package ]; };
 }
