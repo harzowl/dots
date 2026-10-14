@@ -262,29 +262,31 @@ mkDotsModule {
       {
         networking.firewall.allowedTCPPorts = [ cfg.port ];
 
-        systemd.services.keycloak-reconcile = {
-          description = "Reconcile the Keycloak realm";
-          after = [ "docker-keycloak.service" ];
-          path = [
-            pkgs.curl
-            pkgs.gettext
-            pkgs.docker
-            pkgs.coreutils
-            pkgs.gnugrep
-          ];
-          serviceConfig.Type = "oneshot";
-          script = reconcile;
-        };
+        systemd = {
+          services.keycloak-reconcile = {
+            description = "Reconcile the Keycloak realm";
+            after = [ "docker-keycloak.service" ];
+            path = [
+              pkgs.curl
+              pkgs.gettext
+              pkgs.docker
+              pkgs.coreutils
+              pkgs.gnugrep
+            ];
+            serviceConfig.Type = "oneshot";
+            script = reconcile;
+          };
 
-        # A deploy restarts Keycloak (its realm/config mounts change), and a
-        # realm client isn't live until this reconcile runs — so retry often
-        # (the script is cheap and exits immediately when Keycloak isn't up yet)
-        # rather than letting a new client wait up to 15 minutes.
-        systemd.timers.keycloak-reconcile = {
-          wantedBy = [ "timers.target" ];
-          timerConfig = {
-            OnBootSec = "30s";
-            OnUnitActiveSec = "1min";
+          # A deploy restarts Keycloak (its realm/config mounts change), and a
+          # realm client isn't live until this reconcile runs — so retry often
+          # (the script is cheap and exits immediately when Keycloak isn't up yet)
+          # rather than letting a new client wait up to 15 minutes.
+          timers.keycloak-reconcile = {
+            wantedBy = [ "timers.target" ];
+            timerConfig = {
+              OnBootSec = "30s";
+              OnUnitActiveSec = "1min";
+            };
           };
         };
       }
