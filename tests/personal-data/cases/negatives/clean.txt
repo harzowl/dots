@@ -1,0 +1,7 @@
+# Words that must never trip the guard: the host's short name as prose, a
+# capitalised form of the login (the login match is case-sensitive), and
+# reserved or unrelated addresses.
+scripts/check-nest.sh nests the attributes once
+owner = "Leakyuser"
+mail = "me@example.com"
+host = "x@y.test"

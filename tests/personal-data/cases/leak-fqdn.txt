@@ -1,0 +1,1 @@
+upstream = "https://host.privatecorp.example/api"
