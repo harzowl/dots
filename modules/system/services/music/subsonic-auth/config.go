@@ -16,6 +16,7 @@ type config struct {
 	upstream        string
 	keycloakURL     string
 	realm           string
+	requiredRole    string
 	identityHeader  string
 	cacheTTL        time.Duration
 	cacheSize       int
@@ -36,6 +37,7 @@ func loadConfig() (config, error) {
 		upstream:        getenv("UPSTREAM", "http://172.30.0.10:4533"),
 		keycloakURL:     getenv("KEYCLOAK_URL", "http://172.30.0.1:8080"),
 		realm:           os.Getenv("KEYCLOAK_REALM"),
+		requiredRole:    os.Getenv("KEYCLOAK_REQUIRED_ROLE"),
 		identityHeader:  getenv("IDENTITY_HEADER", "X-Forwarded-Preferred-Username"),
 		cacheTTL:        getenvDuration("CACHE_TTL", 60*time.Second),
 		cacheSize:       getenvInt("CACHE_SIZE", 4096),

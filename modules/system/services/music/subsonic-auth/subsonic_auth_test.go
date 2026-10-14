@@ -183,7 +183,7 @@ func newTestServer(t *testing.T, keycloakURL string, upstreamURL string, ttl tim
 	if err != nil {
 		t.Fatalf("parse upstream: %v", err)
 	}
-	v, err := newValidator(keycloakURL, "dummy-DO-NOT-USE-realm", &http.Client{Timeout: 2 * time.Second})
+	v, err := newValidator(keycloakURL, "dummy-DO-NOT-USE-realm", "", &http.Client{Timeout: 2 * time.Second})
 	if err != nil {
 		t.Fatalf("validator: %v", err)
 	}
@@ -802,11 +802,63 @@ func TestValidatorRejectsNon200(t *testing.T) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer srv.Close()
-	v, err := newValidator(srv.URL, "dummy-DO-NOT-USE-realm", &http.Client{Timeout: time.Second})
+	v, err := newValidator(srv.URL, "dummy-DO-NOT-USE-realm", "", &http.Client{Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := v.validate(context.Background(), "a", "b"); err == nil {
 		t.Fatal("validator accepted a 429")
+	}
+}
+
+// TestValidatorSendsRequiredRole proves the shim scopes native PATs to its own
+// service: it sends `X-Required-Role`, and a token the SPI rejects for that role
+// (403) is denied like any other bad token.
+func TestValidatorSendsRequiredRole(t *testing.T) {
+	tests := []struct {
+		name         string
+		requiredRole string
+		serverRole   string
+		wantErr      bool
+	}{
+		{name: "sends the configured role", requiredRole: "subsonic", serverRole: "subsonic"},
+		{name: "omits the header when unset", requiredRole: "", serverRole: ""},
+		{name: "denies a token scoped elsewhere", requiredRole: "subsonic", serverRole: "other", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var header string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				header = r.Header.Get("X-Required-Role")
+				if header != tt.serverRole {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+				w.Header().Set("X-User", "dummy-DO-NOT-USE@example.invalid")
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			v, err := newValidator(srv.URL, "dummy-DO-NOT-USE-realm", tt.requiredRole, &http.Client{Timeout: time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			id, err := v.validate(context.Background(), "dummy-DO-NOT-USE@example.invalid", "pat-123")
+			if header != tt.requiredRole {
+				t.Fatalf("X-Required-Role = %q, want %q", header, tt.requiredRole)
+			}
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("validator accepted a token without the required role")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("validate: %v", err)
+			}
+			if id != "dummy-DO-NOT-USE@example.invalid" {
+				t.Fatalf("identity = %q", id)
+			}
+		})
 	}
 }

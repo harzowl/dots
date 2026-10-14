@@ -80,6 +80,15 @@ mkDotsModule {
         type = lib.types.str;
         description = "Keycloak realm holding the users and their PATs.";
       };
+      requiredRole = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = ''
+          Realm role a PAT must carry to authenticate here. Sent to the PAT SPI as
+          `X-Required-Role`, so a token minted for another service is refused
+          (403). Empty accepts any valid PAT for the user.
+        '';
+      };
       identityHeader = lib.mkOption {
         type = lib.types.str;
         default = "X-Forwarded-Preferred-Username";
@@ -143,6 +152,7 @@ mkDotsModule {
           inherit (cfg) upstream;
           inherit (cfg) keycloakUrl;
           keycloakRealm = cfg.realm;
+          keycloakRequiredRole = cfg.requiredRole;
           inherit (cfg) identityHeader;
           inherit (cfg) cacheTtl;
           inherit (cfg) cacheSize;

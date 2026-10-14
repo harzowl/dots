@@ -21,7 +21,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid UPSTREAM %q: %v", cfg.upstream, err)
 	}
-	v, err := newValidator(cfg.keycloakURL, cfg.realm, &http.Client{Timeout: cfg.validateTimeout})
+	v, err := newValidator(cfg.keycloakURL, cfg.realm, cfg.requiredRole, &http.Client{Timeout: cfg.validateTimeout})
 	if err != nil {
 		log.Fatalf("invalid KEYCLOAK_URL %q: %v", cfg.keycloakURL, err)
 	}

@@ -13,28 +13,34 @@ var errDenied = errors.New("invalid or expired credential")
 
 // validator calls the Keycloak Personal Access Token SPI endpoint.
 type validator struct {
-	endpoint string
-	client   *http.Client
+	endpoint     string
+	requiredRole string
+	client       *http.Client
 }
 
-func newValidator(keycloakURL, realm string, client *http.Client) (*validator, error) {
+func newValidator(keycloakURL, realm, requiredRole string, client *http.Client) (*validator, error) {
 	base, err := url.Parse(keycloakURL)
 	if err != nil {
 		return nil, err
 	}
 	endpoint := base.JoinPath("realms", realm, "personal-access-token", "auth").String()
-	return &validator{endpoint: endpoint, client: client}, nil
+	return &validator{endpoint: endpoint, requiredRole: requiredRole, client: client}, nil
 }
 
 // validate sends `Authorization: Basic base64(user:token)` to the PAT endpoint.
 // A 200 means the token is valid; the identity comes from the `X-User` response
-// header. Any other status is a denial.
+// header. When `requiredRole` is set it rides along as `X-Required-Role`, so the
+// PAT must be scoped to this service and a token minted for another app is
+// refused (403) — every non-200 is a denial.
 func (v *validator) validate(ctx context.Context, user, token string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.endpoint, nil)
 	if err != nil {
 		return "", err
 	}
 	req.SetBasicAuth(user, token)
+	if v.requiredRole != "" {
+		req.Header.Set("X-Required-Role", v.requiredRole)
+	}
 	resp, err := v.client.Do(req)
 	if err != nil {
 		return "", err
