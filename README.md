@@ -50,10 +50,15 @@ most of the list is "use the default and don't opt out".
    credential; bound revocation with a short TTL and key rotation.
 5. **Fixtures are dummies.** Any test, mock or example value is obviously fake
    (`dummy-DO-NOT-USE-…`). Never paste a value from a log, a config, the live
-   system, an env var, or a real account.
+   system, an env var, or a real account. Identity is data too: never commit
+   your own username, email, domain or host name — use a `dummy-DO-NOT-USE-…`
+   identity and a reserved example address (`.invalid`, `.test`, `example.com`).
 6. **Run the scanner.** `nix flake check` runs `checks.*.secret-scan`
    (`gitleaks` plus `scripts/secret-scan.py`), which fails on a credential-shaped
-   string in any tracked file, test fixtures included.
+   string in any tracked file, test fixtures included — and on any address that
+   is not on a reserved example domain. The pre-commit hook also runs
+   `scripts/personal-data-guard.sh`, which derives the committer's own email,
+   domain, FQDN and login and fails if they appear in a staged file.
 7. **Guard the default.** Add a test or an assertion that the safe behaviour is
    the default (e.g. every generated vhost has redaction, `/auth/login` never
    returns the raw credential), so a future change cannot regress it silently.

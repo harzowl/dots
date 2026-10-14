@@ -20,6 +20,15 @@ thin and put reusable behaviour here.
 - **Pass secrets in, never bake them in.** Secrets arrive via `environmentFiles`
   / systemd credentials — never as a module `settings` value (that lands in the
   Nix store) and never in generated config. Never log a secret.
+- **Never commit personal identifiers.** A real username, email address,
+  personal domain or host name is data, never configuration: it belongs in the
+  consuming host, not here. Examples, fixtures and identities are obviously
+  fake (`dummy-DO-NOT-USE-…`) and any address uses a reserved example domain
+  (`example.com`/`.net`/`.org`, `.invalid`, `.test`, `.localhost`). The
+  `secret-scan` check flags any non-example address over the whole tree, and
+  `.githooks/pre-commit` runs `scripts/personal-data-guard.sh`, which derives
+  the committer's own email, domain, FQDN and login at run time — no private
+  value is stored — and fails if any appear in a staged file.
 
 ## Commit messages (binding)
 
