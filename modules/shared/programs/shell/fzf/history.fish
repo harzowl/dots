@@ -8,14 +8,23 @@ function fzf-history-widget -d "Show atuin history with a local date column"
     set -l total_lines (count $command_line)
     set -l buf $command_line[$current_line]
 
+    # A failed atuin exits non-zero; its error must not reach fzf as history.
+    set -l data (mktemp)
+    atuin history list --print0 -f '{time}\t{command}' >$data 2>/dev/null
+    or begin
+        rm -f $data
+        return
+    end
+
     set -l fzf_args --height=40% --min-height=20+ --bind=ctrl-z:ignore \
         --read0 --print0 --no-multi-line --tabstop=4 --ansi \
         --delimiter=\t --accept-nth=2.. --multi
     test -n "$buf"; and set -a fzf_args --query="$buf"
 
-    if set -l result (atuin history list --print0 -f '{time}\t{command}' \
-            | "@HISTORY_DATE@" \
-            | fzf $fzf_args | string split0)
+    set -l result ("@HISTORY_DATE@" <$data | fzf $fzf_args | string split0)
+    rm -f $data
+
+    if test (count $result) -gt 0
         if test "$total_lines" -eq 1
             commandline -- $result
         else

@@ -3,15 +3,21 @@
 # each row, and only the command is inserted.
 fzf-history-widget() {
   setopt localoptions no_aliases
-  local selected
+  local data=$(mktemp) selected
+  if ! atuin history list --print0 -f '{time}\t{command}' > "$data" 2>/dev/null; then
+    rm -f "$data"
+    return
+  fi
   selected=$(
-    atuin history list --print0 -f '{time}\t{command}' \
-      | "@HISTORY_DATE@" \
+    "@HISTORY_DATE@" < "$data" \
       | fzf --height=40% --min-height=20+ --bind=ctrl-z:ignore \
           --read0 --no-multi-line --tabstop=4 --ansi \
           --delimiter=$'\t' --accept-nth=2.. --multi \
           --query="${LBUFFER}"
-  ) || return
+  )
+  local st=$?
+  rm -f "$data"
+  (( st == 0 )) || return
   [ -n "$selected" ] || return
   LBUFFER="${selected}"
   zle reset-prompt
