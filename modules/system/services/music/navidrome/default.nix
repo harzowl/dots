@@ -278,7 +278,7 @@ mkDotsModule {
                 # ExtAuth on /rest does not auto-provision, so create what is missing.
                 synccfg="$(mktemp)"
                 chmod 600 "$synccfg"
-                sed -n 's/^${cfg.admin.sync.clientSecretKey}=//p' ${toString cfg.admin.sync.clientSecretFile} > "$synccfg"
+                sed -n 's/^${cfg.admin.sync.clientSecretKey}=//p' ${toString cfg.admin.sync.clientSecretFile} | tr -d '\n' > "$synccfg"
                 token="$(curl -fsS -X POST "${cfg.admin.sync.url}/realms/${cfg.admin.sync.realm}/protocol/openid-connect/token" \
                   -d grant_type=client_credentials -d client_id=${cfg.admin.sync.clientId} \
                   --data-urlencode "client_secret@$synccfg" 2>/dev/null | jq -r '.access_token // empty')"
