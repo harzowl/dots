@@ -216,19 +216,21 @@ in
       }
     ];
 
-    networking.wireguard.interfaces = interfaces;
+    networking = {
+      wireguard.interfaces = interfaces;
+
+      nat = lib.mkIf egressOn {
+        enable = true;
+        externalInterface = cfg.egress.interface;
+        internalInterfaces = lib.attrNames interfaces;
+      };
+
+      firewall.allowedUDPPorts = lib.mkIf egressOn listenPorts;
+    };
 
     boot.kernel.sysctl = lib.mkIf egressOn {
       "net.ipv4.ip_forward" = 1;
       "net.ipv6.conf.all.forwarding" = 1;
     };
-
-    networking.nat = lib.mkIf egressOn {
-      enable = true;
-      externalInterface = cfg.egress.interface;
-      internalInterfaces = lib.attrNames interfaces;
-    };
-
-    networking.firewall.allowedUDPPorts = lib.mkIf egressOn listenPorts;
   };
 }
