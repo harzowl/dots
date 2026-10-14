@@ -67,8 +67,10 @@ Every commit follows [Conventional Commits](https://www.conventionalcommits.org/
 - **Nest a repeated attribute path; never write it per line.** Two adjacent
   assignments that share a prefix belong in one attrset —
   `networking.firewall = { allowedTCPPorts = …; allowedUDPPorts = …; };` — not
-  two dotted lines. `semgrep/nix-nest-repeated-attribute-path.yaml` (run by the
-  pre-commit hook) fails the commit that does otherwise.
+  two dotted lines. `scripts/check-nest.sh` (run by the pre-commit hook) fails the
+  commit that does otherwise. It flags repeats only when they are siblings in one
+  attrset literal, never one split across `lib.mkIf`/`lib.optionalAttrs`/`let`
+  fragments. Fixtures: `tests/nest-check/run.sh`.
 - **A comment must earn its place.** Comment only a non-obvious *why* — a
   security invariant, a footgun, a workaround — never what the code already
   says, never structure, never the next line. If deleting it loses no
