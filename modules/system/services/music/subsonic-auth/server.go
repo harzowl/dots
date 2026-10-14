@@ -87,7 +87,7 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 	// strip the credential from the body before it reaches Navidrome.
 	form, err := readFormBody(r)
 	if err != nil {
-		s.deny(w, r, subsonicErrorWrongCredentials, "malformed request body")
+		s.deny(w, r, form, subsonicErrorWrongCredentials, "malformed request body")
 		return
 	}
 
@@ -104,7 +104,7 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 	if user, token, st := extractCredential(r, form); st == credOK {
 		identity, ok := s.validatePAT(r.Context(), user, token)
 		if !ok {
-			s.deny(w, r, subsonicErrorWrongCredentials, "invalid or expired personal access token")
+			s.deny(w, r, form, subsonicErrorWrongCredentials, "invalid or expired personal access token")
 			return
 		}
 		s.proxy(w, r, identity, form)
@@ -117,7 +117,7 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 	if token := bearerToken(r.Header.Get(ndAuthHeader)); token != "" {
 		identity, err := s.signer.Verify(token, "")
 		if err != nil {
-			s.deny(w, r, subsonicErrorTokenUnsupported, "invalid or expired token")
+			s.deny(w, r, form, subsonicErrorTokenUnsupported, "invalid or expired token")
 			return
 		}
 		s.proxy(w, r, identity, form)
@@ -126,19 +126,21 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 
 	// The Subsonic `t` parameter is the signed token /auth/login hands back
 	// (`subsonicToken`); it is verified against `u` so a token only ever
-	// authenticates the identity it was minted for.
+	// authenticates the identity it was minted for. A raw client-side md5
+	// (`t`+`s`) cannot be verified against a PAT, so it answers 41 — the code
+	// clients key on to retry with the credential in plaintext `p` instead.
 	if token := param(r, form, "t"); token != "" {
 		user := param(r, form, "u")
 		identity, err := s.signer.Verify(token, user)
 		if err != nil {
-			s.deny(w, r, subsonicErrorWrongCredentials, "invalid or expired token")
+			s.deny(w, r, form, subsonicErrorTokenUnsupported, "invalid or expired token")
 			return
 		}
 		s.proxy(w, r, identity, form)
 		return
 	}
 
-	s.deny(w, r, subsonicErrorWrongCredentials, "missing or malformed credentials")
+	s.deny(w, r, form, subsonicErrorWrongCredentials, "missing or malformed credentials")
 }
 
 // maxFormBody bounds a urlencoded request body we will buffer. A Subsonic
@@ -278,15 +280,9 @@ func (s *server) writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-func (s *server) deny(w http.ResponseWriter, r *http.Request, code int, message string) {
+func (s *server) deny(w http.ResponseWriter, r *http.Request, form url.Values, code int, message string) {
 	if strings.HasPrefix(r.URL.Path, "/rest") {
-		s.writeJSON(w, http.StatusUnauthorized, map[string]any{
-			"subsonic-response": map[string]any{
-				"status":  "failed",
-				"version": "1.16.1",
-				"error":   map[string]any{"code": code, "message": message},
-			},
-		})
+		s.writeSubsonicError(w, r, form, code, message)
 		return
 	}
 	http.Error(w, message, http.StatusUnauthorized)

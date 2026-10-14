@@ -9,8 +9,11 @@
 # `/personal-access-token/auth` endpoint, HTTP Basic `user:PAT`), and on success
 # proxies to Navidrome with a single trusted identity header.
 #
-# A raw `t`/`s` (md5) credential cannot be checked against a PAT and is
-# rejected. Positive validations are cached briefly (keyed by the sha256 of
+# A raw `t`/`s` (md5) credential cannot be checked against a PAT: it is answered
+# with Subsonic error 41 ("token auth unsupported") over HTTP 200, in the format
+# the client asked for (`f`; XML is the default), which is the signal a client
+# that computes the md5 keys on to retry with the credential in plaintext `p`
+# instead. Positive validations are cached briefly (keyed by the sha256 of
 # `user\x00token`; the plaintext is never stored) so polling/streaming does not
 # hit Keycloak per request.
 #

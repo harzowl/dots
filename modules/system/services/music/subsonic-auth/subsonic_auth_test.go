@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/xml"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -332,14 +333,14 @@ func TestCredentialResolution(t *testing.T) {
 		{
 			name:       "rest t signed token bound to a different u",
 			path:       "/rest/ping.view?u=dummy-DO-NOT-USE-other%40example.invalid&t={token}&s=abcdef&v=1.16.1&c=test&f=json",
-			wantStatus: http.StatusUnauthorized,
-			wantCode:   subsonicErrorWrongCredentials,
+			wantStatus: http.StatusOK,
+			wantCode:   subsonicErrorTokenUnsupported,
 		},
 		{
 			name:       "rest t carrying a raw PAT is refused",
 			path:       "/rest/ping.view?u=dummy-DO-NOT-USE%40example.invalid&t=pat-123&s=abcdef&v=1.16.1&c=test&f=json",
-			wantStatus: http.StatusUnauthorized,
-			wantCode:   subsonicErrorWrongCredentials,
+			wantStatus: http.StatusOK,
+			wantCode:   subsonicErrorTokenUnsupported,
 		},
 		{
 			name:         "basic pat",
@@ -357,8 +358,8 @@ func TestCredentialResolution(t *testing.T) {
 		{
 			name:       "unknown t",
 			path:       "/rest/ping.view?u=dummy-DO-NOT-USE%40example.invalid&t=unknown&s=abcdef&v=1.16.1&c=test&f=json",
-			wantStatus: http.StatusUnauthorized,
-			wantCode:   subsonicErrorWrongCredentials,
+			wantStatus: http.StatusOK,
+			wantCode:   subsonicErrorTokenUnsupported,
 		},
 		{
 			name:       "unknown bearer token",
@@ -370,13 +371,13 @@ func TestCredentialResolution(t *testing.T) {
 			name:       "invalid pat",
 			path:       "/rest/ping.view",
 			setHeaders: map[string]string{"Authorization": basic("dummy-DO-NOT-USE@example.invalid", "wrong-pat")},
-			wantStatus: http.StatusUnauthorized,
+			wantStatus: http.StatusOK,
 			wantCode:   subsonicErrorWrongCredentials,
 		},
 		{
 			name:       "no credentials",
 			path:       "/rest/ping.view?v=1.16.1&c=test&f=json",
-			wantStatus: http.StatusUnauthorized,
+			wantStatus: http.StatusOK,
 			wantCode:   subsonicErrorWrongCredentials,
 		},
 	}
@@ -442,10 +443,18 @@ func subsonicErrorCode(t *testing.T, body []byte) int {
 			} `json:"error"`
 		} `json:"subsonic-response"`
 	}
-	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("body is not subsonic json: %v (%q)", err, body)
+	if err := json.Unmarshal(body, &resp); err == nil && resp.Subsonic.Error.Code != 0 {
+		return resp.Subsonic.Error.Code
 	}
-	return resp.Subsonic.Error.Code
+	var xmlResp struct {
+		Error struct {
+			Code int `xml:"code,attr"`
+		} `xml:"error"`
+	}
+	if err := xml.Unmarshal(body, &xmlResp); err != nil {
+		t.Fatalf("body is neither subsonic json nor xml: %v (%q)", err, body)
+	}
+	return xmlResp.Error.Code
 }
 
 func TestRestSignedTokenIsStrippedUpstream(t *testing.T) {
@@ -569,13 +578,13 @@ func TestFormPostCredentialResolution(t *testing.T) {
 		{
 			name:       "body t raw PAT is refused",
 			body:       "u=dummy-DO-NOT-USE%40example.invalid&t=pat-123&s=abcdef&id=x&submission=false&c=Feishin&f=json&v=1.13.0",
-			wantStatus: http.StatusUnauthorized,
-			wantCode:   subsonicErrorWrongCredentials,
+			wantStatus: http.StatusOK,
+			wantCode:   subsonicErrorTokenUnsupported,
 		},
 		{
 			name:       "body without credential",
 			body:       "id=x&submission=false&c=Feishin&f=json&v=1.13.0",
-			wantStatus: http.StatusUnauthorized,
+			wantStatus: http.StatusOK,
 			wantCode:   subsonicErrorWrongCredentials,
 		},
 	}
@@ -602,11 +611,9 @@ func TestFormPostCredentialResolution(t *testing.T) {
 			if rec.Code != tt.wantStatus {
 				t.Fatalf("status = %d, want %d (body %q)", rec.Code, tt.wantStatus, rec.Body.String())
 			}
-			if tt.wantStatus != http.StatusOK {
-				if tt.wantCode != 0 {
-					if got := subsonicErrorCode(t, rec.Body.Bytes()); got != tt.wantCode {
-						t.Fatalf("subsonic error code = %d, want %d", got, tt.wantCode)
-					}
+			if tt.wantCode != 0 {
+				if got := subsonicErrorCode(t, rec.Body.Bytes()); got != tt.wantCode {
+					t.Fatalf("subsonic error code = %d, want %d", got, tt.wantCode)
 				}
 				if atomic.LoadInt32(&cap.hits) != 0 {
 					t.Fatalf("upstream called for a rejected request")
@@ -701,8 +708,11 @@ func TestInvalidTokenDeniedNoHeader(t *testing.T) {
 	req.Header.Set("Authorization", basic("dummy-DO-NOT-USE@example.invalid", "wrong-pat"))
 	srv.Handler().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := subsonicErrorCode(t, rec.Body.Bytes()); got != subsonicErrorWrongCredentials {
+		t.Fatalf("subsonic error code = %d, want %d", got, subsonicErrorWrongCredentials)
 	}
 	if atomic.LoadInt32(&cap.hits) != 0 {
 		t.Fatalf("upstream was called for an invalid credential")
