@@ -25,6 +25,9 @@
 {
   config,
   lib,
+  # `options`, `home` and `system` read `args.pkgs`, so it must stay a formal.
+  # deadnix: skip
+  pkgs,
   ...
 }@args:
 let
