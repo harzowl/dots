@@ -1,14 +1,14 @@
 # Replaces fzf's own Ctrl-R widget: it keeps fzf's function name and rebinds
-# ^R, so fzf's bindings resolve to this one. zsh's timestamped history lives in
-# the extended history file, so the shared formatter reads that; only the
-# command is inserted.
+# ^R, while atuin stays the history store. The shared formatter dates and colours
+# each row, and only the command is inserted.
 fzf-history-widget() {
   setopt localoptions no_aliases
   local selected
   selected=$(
-    "@HISTORY_DATE@" --zsh "${HISTFILE:-$HOME/.zsh_history}" \
+    atuin history list --print0 -f '{time}\t{command}' \
+      | "@HISTORY_DATE@" \
       | fzf --height=40% --min-height=20+ --bind=ctrl-z:ignore \
-          --read0 --no-multi-line --tabstop=4 \
+          --read0 --no-multi-line --tabstop=4 --ansi \
           --delimiter=$'\t' --accept-nth=2.. --multi \
           --query="${LBUFFER}"
   ) || return

@@ -1,22 +1,21 @@
-# Replaces fzf's own Ctrl-R widget: it keeps fzf's function name, so fzf's
-# key bindings resolve to this one. Fish's `history` builtin is the
-# authoritative reader (it decodes multi-line entries and merges sessions);
-# `%s` emits each entry's epoch, which the shared formatter renders as a local
-# date. Only the command is ever inserted into the command line.
-function fzf-history-widget -d "Show command history with a local date column"
+# Replaces fzf's own Ctrl-R widget: it keeps fzf's function name and rebinds
+# ^R, while atuin stays the history store (the module keeps its recording hooks
+# and only its own Ctrl-R binding off). The shared formatter dates and colours
+# each row, and only the command is inserted.
+function fzf-history-widget -d "Show atuin history with a local date column"
     set -l command_line (commandline)
     set -l current_line (commandline -L)
     set -l total_lines (count $command_line)
-    set -l fzf_query (string escape -- $command_line[$current_line])
+    set -l buf $command_line[$current_line]
 
-    test -z "$fish_private_mode"; and builtin history merge
+    set -l fzf_args --height=40% --min-height=20+ --bind=ctrl-z:ignore \
+        --read0 --print0 --no-multi-line --tabstop=4 --ansi \
+        --delimiter=\t --accept-nth=2.. --multi
+    test -n "$buf"; and set -a fzf_args --query="$buf"
 
-    if set -l result (builtin history -z --show-time='%s%t' \
+    if set -l result (atuin history list --print0 -f '{time}\t{command}' \
             | "@HISTORY_DATE@" \
-            | fzf --height=40% --min-height=20+ --bind=ctrl-z:ignore \
-                --read0 --print0 --no-multi-line --tabstop=4 \
-                --delimiter=\t --accept-nth=2.. --multi \
-                --query=$fzf_query | string split0)
+            | fzf $fzf_args | string split0)
         if test "$total_lines" -eq 1
             commandline -- $result
         else

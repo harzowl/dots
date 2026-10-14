@@ -78,9 +78,9 @@ mkSharedProgram {
     let
       inherit (args) lib pkgs;
 
-      # One formatter, shared by every shell: each shell's reader emits
-      # `<epoch>\t<command>` and this renders the date. `@DATE@` pins GNU
-      # coreutils' `date`, whose `-d @epoch` the readers rely on.
+      # One formatter, shared by every shell: the history source emits
+      # `<timestamp>\t<command>` records and this renders the date. `@DATE@`
+      # pins GNU coreutils' `date`, which the formatter normalises with.
       historyDate = pkgs.writeShellScript "history-date" (
         lib.replaceStrings [ "@DATE@" ] [ "${pkgs.coreutils}/bin/date" ] (
           builtins.readFile ./history-date.sh
