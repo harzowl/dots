@@ -39,7 +39,7 @@ mkSharedProgram {
       };
 
       settings = lib.mkOption {
-        type = (pkgs.formats.toml { }).type;
+        inherit ((pkgs.formats.toml { })) type;
         default = { };
         description = "bottom configuration, forwarded to `programs.bottom.settings` on the home target. Per-user settings shadow the system install.";
       };

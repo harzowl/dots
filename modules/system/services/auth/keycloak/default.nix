@@ -32,7 +32,7 @@ mkDotsModule {
     { lib, pkgs, ... }:
     {
       realm = lib.mkOption {
-        type = (pkgs.formats.json { }).type;
+        inherit ((pkgs.formats.json { })) type;
         description = "Realm definition (roles + clients). `\${VAR}` placeholders are resolved from the environment.";
       };
 
@@ -121,7 +121,7 @@ mkDotsModule {
       inherit (args) lib pkgs;
       domain = args.config.dots.system.core.domain;
       hostname = if cfg.hostname != null then cfg.hostname else "auth.${domain}";
-      realm = cfg.realm;
+      inherit (cfg) realm;
 
       # `userProfile` and `defaultRequiredActions` are not fields of Keycloak's
       # realm representation (the live realm gets them from the reconcile,
@@ -159,22 +159,22 @@ mkDotsModule {
       # applies them with a plain `kcadm update realms/<realm>`.
       realmUpdate =
         let
-          displayFlag = lib.optionalString ((realm.displayName or null) != null) (
-            "-s 'displayName=${realm.displayName}' "
-          );
+          displayFlag = lib.optionalString (
+            (realm.displayName or null) != null
+          ) "-s 'displayName=${realm.displayName}' ";
           smtpFlags = lib.concatMapStrings (k: "-s 'smtpServer.${k}=${toString smtp.${k}}' ") (
             lib.attrNames smtp
           );
           # A realm field, so a `partialImport` never carries it and a Keycloak
           # restart does not re-import an existing realm: without this update the
           # account theme would only ever apply on the realm's first import.
-          accountThemeFlag = lib.optionalString ((realm.accountTheme or null) != null) (
-            "-s 'accountTheme=${realm.accountTheme}' "
-          );
+          accountThemeFlag = lib.optionalString (
+            (realm.accountTheme or null) != null
+          ) "-s 'accountTheme=${realm.accountTheme}' ";
         in
-        lib.optionalString (displayFlag != "" || smtpFlags != "" || accountThemeFlag != "") (
-          "kcadm update \"realms/\${REALM}\" ${displayFlag}${smtpFlags}${accountThemeFlag}|| true"
-        );
+        lib.optionalString (
+          displayFlag != "" || smtpFlags != "" || accountThemeFlag != ""
+        ) "kcadm update \"realms/\${REALM}\" ${displayFlag}${smtpFlags}${accountThemeFlag}|| true";
 
       reconcile =
         lib.replaceStrings
@@ -223,7 +223,7 @@ mkDotsModule {
 
       keycloak = {
         name = "keycloak";
-        image = cfg.image;
+        inherit (cfg) image;
         backend = "docker";
         openFirewall = true;
         ports = [ ];

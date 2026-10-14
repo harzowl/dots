@@ -86,7 +86,7 @@ mkDotsModule {
       };
 
       networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall (
-        lib.mapAttrsToList (_: f: listenPort f) cfg.forwards
+        lib.mapAttrsToList (_: listenPort) cfg.forwards
       );
     };
 }

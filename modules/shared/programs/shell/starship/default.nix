@@ -250,7 +250,7 @@ mkSharedProgram {
       };
 
       settings = lib.mkOption {
-        type = (pkgs.formats.toml { }).type;
+        inherit ((pkgs.formats.toml { })) type;
         default = { };
         description = "Starship configuration, deep-merged over the built-in terminal-dynamic base16 defaults, forwarded to `programs.starship.settings`.";
       };

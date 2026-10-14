@@ -32,7 +32,7 @@ mkDotsModule {
   toConfig =
     args: cfg:
     let
-      lib = args.lib;
+      inherit (args) lib;
       engineMounts = lib.mapAttrsToList (
         name: path: "${path}:/usr/local/searxng/searx/engines/${name}.py:ro"
       ) engines;

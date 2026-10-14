@@ -30,7 +30,7 @@ mkDotsModule {
       # so the file is generated from this structure instead of the env vars
       # `mkDockerService.settings` would produce.
       settings = lib.mkOption {
-        type = (pkgs.formats.yaml { }).type;
+        inherit ((pkgs.formats.yaml { })) type;
         default = { };
         description = ''
           Contents of slskd's `slskd.yml`. **Not for secrets** (the Nix store is

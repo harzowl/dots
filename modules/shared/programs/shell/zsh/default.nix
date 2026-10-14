@@ -35,15 +35,15 @@ mkSharedProgram {
       };
     };
 
-  home = args: cfg: {
+  home = _args: cfg: {
     programs.zsh = {
       enable = true;
-      package = cfg.package;
+      inherit (cfg) package;
     }
     // cfg.settings;
   };
 
-  system = args: cfg: {
+  system = _args: cfg: {
     programs.zsh = {
       enable = true;
     }

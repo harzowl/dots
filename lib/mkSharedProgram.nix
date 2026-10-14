@@ -25,8 +25,6 @@
 {
   config,
   lib,
-  pkgs,
-  modulesPath,
   ...
 }@args:
 let

@@ -30,7 +30,7 @@ mkSharedProgram {
       };
     };
 
-  home = args: cfg: { home.packages = [ cfg.package ]; };
+  home = _args: cfg: { home.packages = [ cfg.package ]; };
 
-  system = args: cfg: { environment.systemPackages = [ cfg.package ]; };
+  system = _args: cfg: { environment.systemPackages = [ cfg.package ]; };
 }

@@ -79,7 +79,7 @@ mkDotsModule {
   toConfig =
     args: cfg:
     let
-      lib = args.lib;
+      inherit (args) lib;
     in
     lib.mkMerge [
       (lib.mkIf cfg.enable (

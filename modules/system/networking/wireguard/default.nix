@@ -35,7 +35,7 @@
 }:
 let
   cfg = config.dots.system.networking.wireguard;
-  mesh = cfg.mesh;
+  inherit (cfg) mesh;
 
   # This host's name in the mesh is its hostname; its tunnel IP is `<subnet>.N`
   # by sorted member order (unless the member sets `ip`).
@@ -63,7 +63,7 @@ let
   meshInterface = {
     ips = [ "${ips.${self}}/24" ];
     listenPort = mesh.port;
-    privateKeyFile = mesh.privateKeyFile;
+    inherit (mesh) privateKeyFile;
     peers =
       if isServer then
         map (n: {
@@ -73,7 +73,7 @@ let
       else
         [
           {
-            publicKey = server.publicKey;
+            inherit (server) publicKey;
             endpoint = "${server.address}:${toString mesh.port}";
             allowedIPs =
               if mesh.routeAll then

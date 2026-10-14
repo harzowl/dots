@@ -37,20 +37,20 @@ mkSharedProgram {
       };
     };
 
-  home = args: cfg: {
+  home = _args: cfg: {
     programs.fish = {
       enable = true;
-      package = cfg.package;
+      inherit (cfg) package;
     }
     // cfg.settings;
 
     xdg.configFile."fish/conf.d/dots-theme.fish".text = fishTheme;
   };
 
-  system = args: cfg: {
+  system = _args: cfg: {
     programs.fish = {
       enable = true;
-      package = cfg.package;
+      inherit (cfg) package;
     }
     // cfg.settings;
 

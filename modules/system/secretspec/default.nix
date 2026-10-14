@@ -28,13 +28,12 @@
 let
   cfg = config.dots.system.secretspec;
 
-  secretspec = pkgsUnstable.secretspec;
+  inherit (pkgsUnstable) secretspec;
 
   providerArg = lib.optionalString (
     cfg.provider != null
   ) " --provider ${lib.escapeShellArg cfg.provider}";
   scopeArg = lib.optionalString (cfg.scope != null) " --scope ${lib.escapeShellArg cfg.scope}";
-  manifest = lib.escapeShellArg (toString cfg.manifest);
   profileArg = " --profile ${lib.escapeShellArg cfg.profile}";
 in
 {
@@ -139,7 +138,7 @@ in
           description = "Resolve secrets with SecretSpec";
           wantedBy = [ "multi-user.target" ];
           before = cfg.consumers;
-          environment = cfg.environment;
+          inherit (cfg) environment;
           # Re-run when the manifest or any provider file changes, so a secret edit
           # or rename is re-materialised on the next activation.
           restartTriggers = [ cfg.manifest ] ++ lib.attrValues cfg.files;

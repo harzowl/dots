@@ -137,18 +137,18 @@ mkDotsModule {
         volumes = [ "${binary}/bin/subsonic-auth:/usr/local/bin/subsonic-auth:ro" ];
         settings = {
           listenAddr = "0.0.0.0:${toString cfg.port}";
-          upstream = cfg.upstream;
-          keycloakUrl = cfg.keycloakUrl;
+          inherit (cfg) upstream;
+          inherit (cfg) keycloakUrl;
           keycloakRealm = cfg.realm;
-          identityHeader = cfg.identityHeader;
-          cacheTtl = cfg.cacheTtl;
-          cacheSize = cfg.cacheSize;
+          inherit (cfg) identityHeader;
+          inherit (cfg) cacheTtl;
+          inherit (cfg) cacheSize;
           # The signing key (SUBSONIC_TOKEN_KEY) is NOT here — it comes from
           # `environmentFiles` so it never enters the Nix store.
           subsonicTokenKid = cfg.tokenKid;
           subsonicTokenTtl = cfg.tokenTtl;
           subsonicTokenAud = cfg.tokenAud;
-          validateTimeout = cfg.validateTimeout;
+          inherit (cfg) validateTimeout;
         };
       };
       inherit defaults;

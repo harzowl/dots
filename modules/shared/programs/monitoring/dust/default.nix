@@ -16,7 +16,7 @@ let
     mkCliWrapper {
       inherit (args) lib pkgs;
       name = "dust";
-      package = cfg.package;
+      inherit (cfg) package;
       inherit (cfg) settings;
     };
 in

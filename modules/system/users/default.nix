@@ -85,7 +85,7 @@ in
             # managed here. Only the authorized keys and description are.
             lib.mkMerge [
               { openssh.authorizedKeys.keys = u.keys; }
-              (lib.mkIf (u.initialPassword != null) { initialPassword = u.initialPassword; })
+              (lib.mkIf (u.initialPassword != null) { inherit (u) initialPassword; })
               (lib.mkIf (u.displayName != null) { description = u.displayName; })
             ]
           else
@@ -98,7 +98,7 @@ in
               (lib.mkIf (u.role == "admin" && u.passwordlessSudo) { extraGroups = [ "nopasswd" ]; })
               (lib.mkIf (u.shell == "fish") { shell = config.dots.system.programs.shell.fish.package; })
               (lib.mkIf (u.shell == "zsh") { shell = config.dots.system.programs.shell.zsh.package; })
-              (lib.mkIf (u.initialPassword != null) { initialPassword = u.initialPassword; })
+              (lib.mkIf (u.initialPassword != null) { inherit (u) initialPassword; })
               (lib.mkIf (u.displayName != null) { description = u.displayName; })
             ]
         )

@@ -110,5 +110,5 @@ mkSharedProgram {
       };
     };
 
-  system = args: cfg: { environment.systemPackages = [ cfg.package ]; };
+  system = _args: cfg: { environment.systemPackages = [ cfg.package ]; };
 }

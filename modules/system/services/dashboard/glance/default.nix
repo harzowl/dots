@@ -214,9 +214,9 @@ mkDotsModule {
   toConfig =
     args: cfg:
     let
-      lib = args.lib;
-      pkgs = args.pkgs;
-      pkgsUnstable = args.pkgsUnstable;
+      inherit (args) lib;
+      inherit (args) pkgs;
+      inherit (args) pkgsUnstable;
 
       # Applied to the upstream build; the bundled patches add per-site `tags`
       # and `description` to the monitor widget (upstream has neither).
@@ -272,7 +272,7 @@ mkDotsModule {
       page =
         p:
         {
-          name = p.name;
+          inherit (p) name;
           columns =
             if p.columns != [ ] then
               p.columns
@@ -329,7 +329,7 @@ mkDotsModule {
           pages = map page cfg.pages;
         }
         // lib.optionalAttrs (cfg.branding != { }) { inherit (cfg) branding; }
-        // lib.optionalAttrs themeWanted { theme = theme; }
+        // lib.optionalAttrs themeWanted { inherit theme; }
       );
     in
     lib.mkMerge [

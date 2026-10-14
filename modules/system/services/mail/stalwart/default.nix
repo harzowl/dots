@@ -63,7 +63,7 @@ mkDotsModule {
       };
 
       datastore = lib.mkOption {
-        type = (pkgs.formats.json { }).type;
+        inherit ((pkgs.formats.json { })) type;
         default = {
           "@type" = "RocksDb";
           path = "${cfg.dataDir}/db";
