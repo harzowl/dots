@@ -354,10 +354,10 @@
         };
       };
 
-      networking.firewall.allowedTCPPorts = lib.mkIf spec.openFirewall (map hostPort spec.ports);
-      networking.firewall.allowedUDPPorts = lib.mkIf spec.openFirewall (
-        map hostPort (spec.udpPorts or [ ])
-      );
+      networking.firewall = lib.mkIf spec.openFirewall {
+        allowedTCPPorts = map hostPort spec.ports;
+        allowedUDPPorts = map hostPort (spec.udpPorts or [ ]);
+      };
 
       # Restart the container when a runtime env file's *contents* change.
       #
