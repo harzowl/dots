@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
-# Format staged Nix files with the flake's formatter and re-stage them, then run
-# the repeated-attribute-path checker (`scripts/check-nest.sh`) and the linters
-# (`scripts/lints.sh`, with statix + deadnix from the flake's own lock) over
-# them. Each fails the commit loudly rather than skipping the check.
+# Run the personal-data guard over every staged file, then format and lint the
+# staged Nix files with the flake's formatter and re-stage them, then run the
+# repeated-attribute-path checker (`scripts/check-nest.sh`) and the linters
+# (`scripts/lints.sh`, with statix + deadnix from the flake's own lock). Each
+# fails the commit loudly rather than skipping the check.
 set -euo pipefail
 
-files=$(git diff --cached --name-only --diff-filter=ACM -- '*.nix')
-[ -z "$files" ] && exit 0
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
 
 # shellcheck disable=SC2086
-nix fmt -- $files
-# shellcheck disable=SC2086
-git add -- $files
+scripts/personal-data-guard.sh $staged
+
+nix_files=$(printf '%s\n' "$staged" | grep -E '\.nix$' || true)
+[ -z "$nix_files" ] && exit 0
 
 # shellcheck disable=SC2086
-scripts/check-nest.sh $files
+nix fmt -- $nix_files
+# shellcheck disable=SC2086
+git add -- $nix_files
 
 # shellcheck disable=SC2086
-nix shell --inputs-from . nixpkgs#statix nixpkgs#deadnix -c bash scripts/lints.sh $files
+scripts/check-nest.sh $nix_files
+
+# shellcheck disable=SC2086
+nix shell --inputs-from . nixpkgs#statix nixpkgs#deadnix -c bash scripts/lints.sh $nix_files
