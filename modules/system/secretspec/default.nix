@@ -35,6 +35,23 @@ let
   ) " --provider ${lib.escapeShellArg cfg.provider}";
   scopeArg = lib.optionalString (cfg.scope != null) " --scope ${lib.escapeShellArg cfg.scope}";
   profileArg = " --profile ${lib.escapeShellArg cfg.profile}";
+
+  # The manifest and the provider files the resolver reads, pinned to THIS
+  # generation's store paths. Resolving against `/etc` is a race: on a switch
+  # the unit restarts before `/etc/static` flips, so it would read the previous
+  # generation's manifest and miss secrets the new one added. A relative
+  # provider (e.g. `sops://secrets.enc.yaml`) resolves against the manifest's
+  # directory, so the files are linked beside it.
+  secretspecDir = pkgs.linkFarm "secretspec-runtime" (
+    [
+      {
+        name = "secretspec.toml";
+        path = cfg.manifest;
+      }
+    ]
+    ++ lib.mapAttrsToList (name: path: { inherit name path; }) cfg.files
+  );
+  manifestFile = "${secretspecDir}/secretspec.toml";
 in
 {
   options.dots.system.secretspec = {
@@ -124,9 +141,10 @@ in
       }
     ];
 
-    # The manifest (and any provider files) go under /etc/secretspec so they
-    # enter the system closure: a bare store path referenced only from the
-    # unit's script is not tracked and would be missing on the target.
+    # Keep the manifest and provider files under /etc/secretspec for operators
+    # (and so the directory that holds the out-of-band age key exists). The
+    # resolver does NOT read them from here — it reads the generation-pinned
+    # `secretspecDir` — so its result never depends on /etc having caught up.
     environment.etc = {
       "secretspec/secretspec.toml".source = cfg.manifest;
     }
@@ -152,18 +170,19 @@ in
             RemainAfterExit = true;
             RuntimeDirectory = "secretspec";
             RuntimeDirectoryMode = "0700";
+            WorkingDirectory = secretspecDir;
           };
           script = ''
             set -eu
             ${lib.optionalString cfg.envFile ''
               ${cfg.package}/bin/secretspec export \
-                --file /etc/secretspec/secretspec.toml${profileArg}${scopeArg}${providerArg} --format dotenv \
+                --file ${manifestFile}${profileArg}${scopeArg}${providerArg} --format dotenv \
                 > /run/secretspec/env
               chmod 600 /run/secretspec/env
             ''}
             ${lib.concatMapStrings (name: ''
               ${cfg.package}/bin/secretspec get \
-                --file /etc/secretspec/secretspec.toml${profileArg}${providerArg} ${lib.escapeShellArg name} \
+                --file ${manifestFile}${profileArg}${providerArg} ${lib.escapeShellArg name} \
                 > /run/secretspec/${lib.escapeShellArg name}
               chmod 600 /run/secretspec/${lib.escapeShellArg name}
             '') cfg.secrets}
