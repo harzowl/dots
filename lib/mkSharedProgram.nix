@@ -32,11 +32,16 @@
 let
   fullPath = root ++ optionPath;
   cfg = lib.getAttrFromPath fullPath config;
+  # `root` is threaded through so a projection can look up a sibling program's
+  # config (e.g. zoxide reading fzf) without knowing how the tree was rooted.
+  withRoot = args // {
+    inherit root;
+  };
 in
 {
   imports = if lib.isFunction imports then imports args else imports;
 
   options = lib.setAttrByPath fullPath ({ enable = lib.mkEnableOption description; } // options args);
 
-  config = lib.mkIf cfg.enable (if target == "home" then home args cfg else system args cfg);
+  config = lib.mkIf cfg.enable (if target == "home" then home withRoot cfg else system withRoot cfg);
 }
