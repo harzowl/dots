@@ -35,13 +35,18 @@ func loadConfig() (config, error) {
 		listenAddr:      getenv("LISTEN_ADDR", "0.0.0.0:8080"),
 		upstream:        getenv("UPSTREAM", "http://172.30.0.10:4533"),
 		keycloakURL:     getenv("KEYCLOAK_URL", "http://172.30.0.1:8080"),
-		realm:           getenv("KEYCLOAK_REALM", "dummy-DO-NOT-USE-realm"),
+		realm:           os.Getenv("KEYCLOAK_REALM"),
 		identityHeader:  getenv("IDENTITY_HEADER", "X-Forwarded-Preferred-Username"),
 		cacheTTL:        getenvDuration("CACHE_TTL", 60*time.Second),
 		cacheSize:       getenvInt("CACHE_SIZE", 4096),
 		validateTimeout: getenvDuration("VALIDATE_TIMEOUT", 5*time.Second),
 		tokenKid:        getenv("SUBSONIC_TOKEN_KID", "1"),
 		tokenAud:        getenv("SUBSONIC_TOKEN_AUD", tokenAudience),
+	}
+
+	// The realm is the consumer's, not the shim's: never default it.
+	if cfg.realm == "" {
+		return config{}, fmt.Errorf("KEYCLOAK_REALM is required (the Keycloak realm holding the users and their PATs)")
 	}
 
 	rawKey := os.Getenv("SUBSONIC_TOKEN_KEY")
