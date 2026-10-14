@@ -10,6 +10,16 @@
 }:
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
+
+  # Applied to every fzf invocation through `FZF_DEFAULT_OPTS`, ahead of the
+  # consumer's `defaultOptions` — which appends rather than replaces, so the
+  # presentation cannot be lost and the consumer's options still win.
+  presentation = [
+    "--style=full"
+    "--pointer=❯"
+    "--prompt='❯ '"
+    "--marker=❯"
+  ];
 in
 mkSharedProgram {
   inherit target root;
@@ -87,11 +97,8 @@ mkSharedProgram {
       programs = {
         fzf = {
           enable = true;
-          inherit (cfg)
-            package
-            defaultCommand
-            defaultOptions
-            ;
+          inherit (cfg) package defaultCommand;
+          defaultOptions = presentation ++ cfg.defaultOptions;
           enableFishIntegration = cfg.replaceNativeSearch;
           enableBashIntegration = cfg.replaceNativeSearch;
           enableZshIntegration = cfg.replaceNativeSearch;
