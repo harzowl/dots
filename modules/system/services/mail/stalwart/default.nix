@@ -154,16 +154,18 @@ mkDotsModule {
     {
       networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall cfg.firewallPorts;
 
-      environment.systemPackages = [
-        cfg.package
-        cfg.cliPackage
-      ];
+      environment = {
+        systemPackages = [
+          cfg.package
+          cfg.cliPackage
+        ];
 
-      environment.etc = {
-        "stalwart/config.json".source = configJson;
-      }
-      // lib.optionalAttrs (cfg.provision != null) {
-        "stalwart/provision.json".source = cfg.provision;
+        etc = {
+          "stalwart/config.json".source = configJson;
+        }
+        // lib.optionalAttrs (cfg.provision != null) {
+          "stalwart/provision.json".source = cfg.provision;
+        };
       };
 
       users = {
@@ -174,81 +176,81 @@ mkDotsModule {
         };
       };
 
-      systemd.tmpfiles.rules = [
-        "d '${cfg.dataDir}' 0700 stalwart stalwart - -"
-      ];
-
-      systemd.services.stalwart = {
-        description = "Stalwart Server";
-        wantedBy = [ "multi-user.target" ];
-        after = [
-          "local-fs.target"
-          "network.target"
+      systemd = {
+        tmpfiles.rules = [
+          "d '${cfg.dataDir}' 0700 stalwart stalwart - -"
         ];
-        inherit (cfg) environment;
-        serviceConfig = {
-          Type = "simple";
-          LimitNOFILE = 65536;
-          KillMode = "process";
-          KillSignal = "SIGINT";
-          Restart = "on-failure";
-          RestartSec = 5;
-          SyslogIdentifier = "stalwart";
 
-          ExecStart = "${lib.getExe cfg.package} --config=/etc/stalwart/config.json";
+        services = {
+          stalwart = {
+            description = "Stalwart Server";
+            wantedBy = [ "multi-user.target" ];
+            after = [
+              "local-fs.target"
+              "network.target"
+            ];
+            inherit (cfg) environment;
+            serviceConfig = {
+              Type = "simple";
+              LimitNOFILE = 65536;
+              KillMode = "process";
+              KillSignal = "SIGINT";
+              Restart = "on-failure";
+              RestartSec = 5;
+              SyslogIdentifier = "stalwart";
 
-          LoadCredential = lib.mapAttrsToList (key: value: "${key}:${value}") cfg.credentials;
+              ExecStart = "${lib.getExe cfg.package} --config=/etc/stalwart/config.json";
 
-          CacheDirectory = "stalwart";
-          ReadWritePaths = [ cfg.dataDir ];
+              LoadCredential = lib.mapAttrsToList (key: value: "${key}:${value}") cfg.credentials;
 
-          User = "stalwart";
-          Group = "stalwart";
+              CacheDirectory = "stalwart";
+              ReadWritePaths = [ cfg.dataDir ];
 
-          # Bind standard privileged ports.
-          AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
-          CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
+              User = "stalwart";
+              Group = "stalwart";
 
-          # Hardening.
-          DeviceAllow = [ "" ];
-          LockPersonality = true;
-          MemoryDenyWriteExecute = true;
-          PrivateDevices = true;
-          PrivateUsers = false; # incompatible with CAP_NET_BIND_SERVICE
-          ProcSubset = "pid";
-          PrivateTmp = true;
-          ProtectClock = true;
-          ProtectControlGroups = true;
-          ProtectHome = true;
-          ProtectHostname = true;
-          ProtectKernelLogs = true;
-          ProtectKernelModules = true;
-          ProtectKernelTunables = true;
-          ProtectProc = "invisible";
-          ProtectSystem = "strict";
-          RestrictAddressFamilies = [
-            "AF_INET"
-            "AF_INET6"
-            "AF_UNIX"
-          ];
-          RestrictNamespaces = true;
-          RestrictRealtime = true;
-          RestrictSUIDSGID = true;
-          SystemCallArchitectures = "native";
-          SystemCallFilter = [
-            "@system-service"
-            "~@privileged"
-          ];
-          UMask = "0077";
-        };
-      };
+              # Bind standard privileged ports.
+              AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
+              CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
 
-      # Declarative convergence: apply the plan, then restart Stalwart when it
-      # changed anything — `MtaStageData`/`SpamSettings` and the SMTP DATA-stage
-      # gate are only read at service start.
-      systemd.services.stalwart-provision =
-        lib.mkIf (cfg.provision != null && cfg.provisionApiKeyFile != null)
-          {
+              # Hardening.
+              DeviceAllow = [ "" ];
+              LockPersonality = true;
+              MemoryDenyWriteExecute = true;
+              PrivateDevices = true;
+              PrivateUsers = false; # incompatible with CAP_NET_BIND_SERVICE
+              ProcSubset = "pid";
+              PrivateTmp = true;
+              ProtectClock = true;
+              ProtectControlGroups = true;
+              ProtectHome = true;
+              ProtectHostname = true;
+              ProtectKernelLogs = true;
+              ProtectKernelModules = true;
+              ProtectKernelTunables = true;
+              ProtectProc = "invisible";
+              ProtectSystem = "strict";
+              RestrictAddressFamilies = [
+                "AF_INET"
+                "AF_INET6"
+                "AF_UNIX"
+              ];
+              RestrictNamespaces = true;
+              RestrictRealtime = true;
+              RestrictSUIDSGID = true;
+              SystemCallArchitectures = "native";
+              SystemCallFilter = [
+                "@system-service"
+                "~@privileged"
+              ];
+              UMask = "0077";
+            };
+          };
+
+          # Declarative convergence: apply the plan, then restart Stalwart when it
+          # changed anything — `MtaStageData`/`SpamSettings` and the SMTP DATA-stage
+          # gate are only read at service start.
+          stalwart-provision = lib.mkIf (cfg.provision != null && cfg.provisionApiKeyFile != null) {
             description = "Apply the Stalwart provision plan";
             after = [ "stalwart.service" ];
             wants = [ "stalwart.service" ];
@@ -315,5 +317,7 @@ mkDotsModule {
               '';
             };
           };
+        };
+      };
     };
 }
