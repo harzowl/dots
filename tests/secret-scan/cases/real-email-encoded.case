@@ -1,0 +1,2 @@
+# The percent-encoded form hides the same address inside a URL query string.
+GET /rest/ping.view?u=alice%40gmail.com&p=x

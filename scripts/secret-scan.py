@@ -12,7 +12,9 @@ A match is a finding only when it is long (>= 40 chars), high-entropy
 (>= 3.5 bits/char) **and** mixes upper case, lower case and digits, so
 ordinary long identifiers (CamelCase, no digits), Store/nar hashes and the
 `dummy-DO-NOT-USE-...` placeholder convention do not trip it. It also flags a
-few literal credential prefixes outright.
+few literal credential prefixes outright, and any email address that is not on
+a reserved example domain (or a GitHub noreply host) — a real personal address
+is a leak even when it carries no credential shape.
 
 Usage: secret-scan.py [PATH ...]   (defaults to the current directory)
 Exit status: 0 clean, 1 findings, 2 usage error.
@@ -70,6 +72,35 @@ ALLOW_PATH = re.compile(
     r"(\.pub$|\.patch$|flake\.lock$|go\.sum$|"
     r"secrets\.enc\.yaml$|\.sops\.yaml$|package-lock\.json$)"
 )
+
+# Every address must live on a reserved example domain (RFC 2606/6761) or a
+# privacy-preserving noreply host. A real personal address is a leak, so this
+# runs before the line allowlist — a stray `example` on the same line must not
+# shield a real address. The percent-encoded form (`%40`) hides the same leak
+# inside a URL query string.
+EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
+EMAIL_ENCODED = re.compile(r"[A-Za-z0-9._%+-]+%40([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
+RESERVED_DOMAIN = re.compile(
+    r"(?:^|\.)(?:example\.(?:com|net|org|edu)|invalid|test|localhost|example)$",
+    re.IGNORECASE,
+)
+NOREPLY_DOMAIN = re.compile(r"\.noreply\.github\.com$", re.IGNORECASE)
+
+
+def is_reserved_email(domain: str) -> bool:
+    return bool(RESERVED_DOMAIN.search(domain) or NOREPLY_DOMAIN.search(domain))
+
+
+def non_example_email(line: str) -> str | None:
+    """The finding label for the first non-reserved address on the line, if any."""
+    for pattern, label in (
+        (EMAIL, "non-example email address"),
+        (EMAIL_ENCODED, "non-example email address (percent-encoded)"),
+    ):
+        for match in pattern.finditer(line):
+            if not is_reserved_email(match.group(1)):
+                return label
+    return None
 
 # A long run of base64/base64url characters (padding allowed).
 TOKEN = re.compile(r"[A-Za-z0-9_+/=-]{40,}")
@@ -134,6 +165,10 @@ def scan_file(path: str) -> list[tuple[int, str]]:
         return []
     findings: list[tuple[int, str]] = []
     for number, line in enumerate(lines, start=1):
+        label = non_example_email(line)
+        if label is not None:
+            findings.append((number, label))
+            continue
         if ALLOW_LINE.search(line):
             continue
         if PREFIXES.search(line):
@@ -155,8 +190,8 @@ def main(argv: list[str]) -> int:
             findings += 1
     if findings:
         print(
-            f"secret-scan: {findings} credential-shaped string(s) found; "
-            "use an obvious dummy (dummy-DO-NOT-USE-...) instead",
+            f"secret-scan: {findings} finding(s); use an obvious dummy "
+            "(dummy-DO-NOT-USE-...) or a reserved example address",
             file=sys.stderr,
         )
         return 1
