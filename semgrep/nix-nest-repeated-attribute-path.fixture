@@ -1,7 +1,0 @@
-# Every line here repeats `networking.firewall`; the rule must flag it.
-# `.fixture` (not `.nix`) so the rule's own `*.nix` filter never scans it.
-
-{
-  networking.firewall.allowedTCPPorts = map hostPort spec.ports;
-  networking.firewall.allowedUDPPorts = map hostPort (spec.udpPorts or [ ]);
-}
