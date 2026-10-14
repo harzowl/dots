@@ -359,65 +359,67 @@
         allowedUDPPorts = map hostPort (spec.udpPorts or [ ]);
       };
 
-      # Restart the container when a runtime env file's *contents* change.
-      #
-      # NixOS change-detection only reacts to unit *definitions*, never to files
-      # a unit merely references — and `environmentFiles` live in /run (absent at
-      # build time), so `restartTriggers` cannot watch them. Each such file gets
-      # a path unit that, when the file is written (e.g. a rotated secret),
-      # triggers a oneshot which restarts the container. A path activation only
-      # *starts* an inactive unit, hence the explicit restart.
-      systemd.paths = lib.listToAttrs (
-        lib.imap0 (
-          i: file:
-          lib.nameValuePair "docker-${spec.name}-env-${toString i}" {
-            wantedBy = [ "multi-user.target" ];
-            pathConfig = {
-              PathChanged = file;
-              Unit = "docker-${spec.name}-env-${toString i}.service";
-            };
-          }
-        ) spec.environmentFiles
-      );
-
-      systemd.services =
-        lib.listToAttrs (
+      systemd = {
+        # Restart the container when a runtime env file's *contents* change.
+        #
+        # NixOS change-detection only reacts to unit *definitions*, never to files
+        # a unit merely references — and `environmentFiles` live in /run (absent at
+        # build time), so `restartTriggers` cannot watch them. Each such file gets
+        # a path unit that, when the file is written (e.g. a rotated secret),
+        # triggers a oneshot which restarts the container. A path activation only
+        # *starts* an inactive unit, hence the explicit restart.
+        paths = lib.listToAttrs (
           lib.imap0 (
-            i: _:
+            i: file:
             lib.nameValuePair "docker-${spec.name}-env-${toString i}" {
-              serviceConfig = {
-                Type = "oneshot";
-                ExecStart = "${pkgs.systemd}/bin/systemctl restart ${spec.backend}-${spec.name}.service";
+              wantedBy = [ "multi-user.target" ];
+              pathConfig = {
+                PathChanged = file;
+                Unit = "docker-${spec.name}-env-${toString i}.service";
               };
             }
           ) spec.environmentFiles
-        )
-        // lib.optionalAttrs (dependsOnUnits != [ ]) {
-          # Start after (and stay bound to) whatever the service depends on.
-          "${spec.backend}-${spec.name}" = {
-            after = dependsOnUnits;
-            requires = dependsOnUnits;
-          };
-        }
-        // lib.optionalAttrs managedNetwork {
-          # Create the user-defined network once (idempotent); every service that
-          # names it declares the same unit, which the module system merges.
-          "docker-network-${network.name}" = {
-            description = "Create the `${network.name}` docker network";
-            after = [ "docker.service" ];
-            requires = [ "docker.service" ];
-            wantedBy = [ "multi-user.target" ];
-            path = [ pkgs.docker ];
-            serviceConfig = {
-              Type = "oneshot";
-              RemainAfterExit = true;
+        );
+
+        services =
+          lib.listToAttrs (
+            lib.imap0 (
+              i: _:
+              lib.nameValuePair "docker-${spec.name}-env-${toString i}" {
+                serviceConfig = {
+                  Type = "oneshot";
+                  ExecStart = "${pkgs.systemd}/bin/systemctl restart ${spec.backend}-${spec.name}.service";
+                };
+              }
+            ) spec.environmentFiles
+          )
+          // lib.optionalAttrs (dependsOnUnits != [ ]) {
+            # Start after (and stay bound to) whatever the service depends on.
+            "${spec.backend}-${spec.name}" = {
+              after = dependsOnUnits;
+              requires = dependsOnUnits;
             };
-            script = ''
-              docker network inspect ${network.name} >/dev/null 2>&1 || docker network create ${
-                lib.optionalString (network.subnet != null) "--subnet ${network.subnet} "
-              }${network.name}
-            '';
+          }
+          // lib.optionalAttrs managedNetwork {
+            # Create the user-defined network once (idempotent); every service that
+            # names it declares the same unit, which the module system merges.
+            "docker-network-${network.name}" = {
+              description = "Create the `${network.name}` docker network";
+              after = [ "docker.service" ];
+              requires = [ "docker.service" ];
+              wantedBy = [ "multi-user.target" ];
+              path = [ pkgs.docker ];
+              serviceConfig = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+              };
+              script = ''
+                docker network inspect ${network.name} >/dev/null 2>&1 || docker network create ${
+                  lib.optionalString (network.subnet != null) "--subnet ${network.subnet} "
+                }${network.name}
+              '';
+            };
           };
-        };
+      };
     };
 }
