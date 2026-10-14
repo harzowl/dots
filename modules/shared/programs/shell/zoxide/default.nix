@@ -36,16 +36,33 @@ mkSharedProgram {
       };
     };
 
-  home = args: cfg: {
-    programs.zoxide = {
-      enable = true;
-      inherit (cfg) package options;
-      enableFishIntegration = true;
-      enableBashIntegration = true;
-      enableZshIntegration = true;
-      enableNushellIntegration = true;
+  home =
+    args: cfg:
+    let
+      fzf = args.lib.getAttrFromPath (
+        args.root
+        ++ [
+          "programs"
+          "shell"
+          "fzf"
+        ]
+      ) args.config;
+    in
+    {
+      programs.zoxide = {
+        enable = true;
+        inherit (cfg) package options;
+        enableFishIntegration = true;
+        enableBashIntegration = true;
+        enableZshIntegration = true;
+        enableNushellIntegration = true;
+      };
+
+      # `zi` shells out to fzf, so give it fzf's flags only when fzf is enabled.
+      home.sessionVariables = args.lib.optionalAttrs fzf.enable {
+        _ZO_FZF_OPTS = args.lib.concatStringsSep " " fzf.defaultOptions;
+      };
     };
-  };
 
   system = args: cfg: { environment.systemPackages = [ cfg.package ]; };
 }
