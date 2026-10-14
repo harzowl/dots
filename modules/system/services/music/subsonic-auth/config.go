@@ -22,6 +22,14 @@ type config struct {
 	cacheSize       int
 	validateTimeout time.Duration
 
+	// PAT store: a reversible, encrypted copy of each user's PATs, so
+	// md5-only clients (`t = md5(password + salt)`) can be verified. The key is
+	// nil when unset, which disables the store; it too arrives via
+	// `environmentFiles`, never `settings`.
+	patStoreDir           string
+	patStoreKey           []byte
+	patRevalidateInterval time.Duration
+
 	// Signed-token settings. The signing key itself is never a `settings` value
 	// (that would put it in the Nix store); it arrives via `environmentFiles`
 	// (the secretspec env file), like every other secret.
@@ -78,7 +86,30 @@ func loadConfig() (config, error) {
 	}
 	cfg.tokenTTL = ttl
 
+	cfg.patStoreDir = getenv("PAT_STORE_DIR", "/var/lib/subsonic-auth")
+	cfg.patRevalidateInterval = getenvDuration("PAT_REVALIDATE_INTERVAL", time.Hour)
+	if raw := os.Getenv("SUBSONIC_PAT_KEY"); raw != "" {
+		key, err := parseStoreKey(raw)
+		if err != nil {
+			return config{}, fmt.Errorf("SUBSONIC_PAT_KEY: %w", err)
+		}
+		cfg.patStoreKey = key
+	}
+
 	return cfg, nil
+}
+
+// parseStoreKey decodes the PAT store's AES key, which must be exactly 32
+// bytes, from the same encodings parseTokenKey accepts.
+func parseStoreKey(v string) ([]byte, error) {
+	key, err := parseTokenKey(v)
+	if err != nil {
+		return nil, err
+	}
+	if len(key) != patKeyLen {
+		return nil, fmt.Errorf("key is %d bytes, need exactly %d (base64 of 32 random bytes)", len(key), patKeyLen)
+	}
+	return key, nil
 }
 
 // parseTokenKey decodes the signing key. It accepts base64 (std or url, padded

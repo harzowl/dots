@@ -9,13 +9,19 @@
 # `/personal-access-token/auth` endpoint, HTTP Basic `user:PAT`), and on success
 # proxies to Navidrome with a single trusted identity header.
 #
-# A raw `t`/`s` (md5) credential cannot be checked against a PAT: it is answered
-# with Subsonic error 41 ("token auth unsupported") over HTTP 200, in the format
-# the client asked for (`f`; XML is the default), which is the signal a client
-# that computes the md5 keys on to retry with the credential in plaintext `p`
-# instead. Positive validations are cached briefly (keyed by the sha256 of
-# `user\x00token`; the plaintext is never stored) so polling/streaming does not
-# hit Keycloak per request.
+# A raw `t`/`s` (md5) credential cannot be checked against a Keycloak PAT
+# directly — Keycloak stores PATs hashed. Instead the shim keeps a reversible,
+# AES-256-GCM-encrypted copy of each user's PATs under `stateDir`: whenever a
+# plaintext/Basic credential validates, the PAT is recorded, and an md5
+# `t = md5(password + s)` is checked against those recorded PATs. A background
+# loop re-checks every stored PAT against the PAT SPI, so revoking a PAT in
+# Keycloak eventually kills md5 on it. Without the store key the store is
+# disabled and an md5 answers Subsonic error 41 ("token auth unsupported") over
+# HTTP 200, in the format the client asked for (`f`; XML is the default), which
+# is the signal a client that computes the md5 keys on to retry with the
+# credential in plaintext `p` instead. Positive validations are cached briefly
+# (keyed by the sha256 of `user\x00token`; the plaintext is never stored) so
+# polling/streaming does not hit Keycloak per request.
 #
 # Native API clients that expect Navidrome's own login — desktop Feishin's
 # "Navidrome" server type does `POST /auth/login` and then sends
@@ -132,6 +138,24 @@ mkDotsModule {
         default = "5s";
         description = "Go duration timeout for a Keycloak validation request.";
       };
+      stateDir = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/subsonic-auth";
+        description = ''
+          Host directory holding the per-user PAT store (AES-256-GCM encrypted
+          at rest), mounted read-write at the same path in the container. The
+          key (`SUBSONIC_PAT_KEY`) comes from `environmentFiles`, never here.
+        '';
+      };
+      revalidateInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "1h";
+        description = ''
+          Go duration between passes that re-check every stored PAT against the
+          Keycloak PAT SPI and drop the revoked ones. This bounds how long a
+          revoked PAT can keep authenticating an md5-only client.
+        '';
+      };
     };
 
   toConfig =
@@ -146,7 +170,10 @@ mkDotsModule {
         ports = [ cfg.port ];
         # Run the store binary directly; alpine has no entrypoint of its own.
         entrypoint = "/usr/local/bin/subsonic-auth";
-        volumes = [ "${binary}/bin/subsonic-auth:/usr/local/bin/subsonic-auth:ro" ];
+        volumes = [
+          "${binary}/bin/subsonic-auth:/usr/local/bin/subsonic-auth:ro"
+          "${cfg.stateDir}:${cfg.stateDir}"
+        ];
         settings = {
           listenAddr = "0.0.0.0:${toString cfg.port}";
           inherit (cfg) upstream;
@@ -156,12 +183,15 @@ mkDotsModule {
           inherit (cfg) identityHeader;
           inherit (cfg) cacheTtl;
           inherit (cfg) cacheSize;
-          # The signing key (SUBSONIC_TOKEN_KEY) is NOT here — it comes from
-          # `environmentFiles` so it never enters the Nix store.
+          # The signing key (SUBSONIC_TOKEN_KEY) and the PAT store key
+          # (SUBSONIC_PAT_KEY) are NOT here — they come from `environmentFiles`
+          # so they never enter the Nix store.
           subsonicTokenKid = cfg.tokenKid;
           subsonicTokenTtl = cfg.tokenTtl;
           subsonicTokenAud = cfg.tokenAud;
           inherit (cfg) validateTimeout;
+          patStoreDir = cfg.stateDir;
+          patRevalidateInterval = cfg.revalidateInterval;
         };
       };
       inherit defaults;

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"net/http/httputil"
@@ -48,6 +49,7 @@ type server struct {
 	cache          *credCache
 	signer         *tokenSigner
 	validator      *validator
+	patStore       *patStore
 	reverseProxy   *httputil.ReverseProxy
 }
 
@@ -56,6 +58,7 @@ type serverDeps struct {
 	cache          *credCache
 	signer         *tokenSigner
 	validator      *validator
+	patStore       *patStore
 	upstream       *url.URL
 }
 
@@ -63,11 +66,16 @@ func newServer(d serverDeps) *server {
 	rp := httputil.NewSingleHostReverseProxy(d.upstream)
 	// Stream responses (audio, Range) without buffering.
 	rp.FlushInterval = -1
+	store := d.patStore
+	if store == nil {
+		store = newPATStore("", nil)
+	}
 	return &server{
 		identityHeader: d.identityHeader,
 		cache:          d.cache,
 		signer:         d.signer,
 		validator:      d.validator,
+		patStore:       store,
 		reverseProxy:   rp,
 	}
 }
@@ -124,19 +132,25 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The Subsonic `t` parameter is the signed token /auth/login hands back
-	// (`subsonicToken`); it is verified against `u` so a token only ever
-	// authenticates the identity it was minted for. A raw client-side md5
-	// (`t`+`s`) cannot be verified against a PAT, so it answers 41 — the code
-	// clients key on to retry with the credential in plaintext `p` instead.
+	// The Subsonic `t` parameter is either the signed token /auth/login hands
+	// back (`subsonicToken`, verified against `u` so it only authenticates the
+	// identity it was minted for) or a raw client-side md5
+	// (`t = md5(password + s)`). The md5 is checked against the user's recorded
+	// PATs; when it matches none the shim answers 41, the code clients key on to
+	// retry with the credential in plaintext `p` instead.
 	if token := param(r, form, "t"); token != "" {
 		user := param(r, form, "u")
-		identity, err := s.signer.Verify(token, user)
-		if err != nil {
-			s.deny(w, r, form, subsonicErrorTokenUnsupported, "invalid or expired token")
+		if identity, err := s.signer.Verify(token, user); err == nil {
+			s.proxy(w, r, identity, form)
 			return
 		}
-		s.proxy(w, r, identity, form)
+		if salt := param(r, form, "s"); salt != "" {
+			if identity, ok := s.patStore.Match(user, token, salt); ok {
+				s.proxy(w, r, identity, form)
+				return
+			}
+		}
+		s.deny(w, r, form, subsonicErrorTokenUnsupported, "invalid or expired token")
 		return
 	}
 
@@ -229,6 +243,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 func (s *server) validatePAT(ctx context.Context, user, token string) (string, bool) {
 	key := sha256.Sum256([]byte(user + "\x00" + token))
 	if identity, ok := s.cache.get(key); ok {
+		s.recordPAT(identity, token)
 		return identity, true
 	}
 	identity, err := s.validator.validate(ctx, user, token)
@@ -236,7 +251,16 @@ func (s *server) validatePAT(ctx context.Context, user, token string) (string, b
 		return "", false
 	}
 	s.cache.set(key, identity)
+	s.recordPAT(identity, token)
 	return identity, true
+}
+
+// recordPAT remembers a validated PAT so md5-only clients can later be checked
+// against it. It is best-effort: a store failure must not fail the request.
+func (s *server) recordPAT(identity, token string) {
+	if err := s.patStore.Record(identity, token); err != nil {
+		log.Printf("subsonic-auth: recording PAT: %v", err)
+	}
 }
 
 // proxy strips every client-supplied identity header (and the credential) and

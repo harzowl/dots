@@ -5,6 +5,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"net/url"
@@ -29,12 +30,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid subsonic token signing key: %v", err)
 	}
+	store := newPATStore(cfg.patStoreDir, cfg.patStoreKey)
+	if !store.Enabled() {
+		log.Printf("subsonic-auth: PAT store disabled (SUBSONIC_PAT_KEY unset); md5-only clients will be refused")
+	} else {
+		go store.runRevalidation(context.Background(), v, cfg.patRevalidateInterval)
+	}
 
 	srv := newServer(serverDeps{
 		identityHeader: cfg.identityHeader,
 		cache:          newCredCache(cfg.cacheTTL, cfg.cacheSize),
 		signer:         signer,
 		validator:      v,
+		patStore:       store,
 		upstream:       upstream,
 	})
 	httpServer := &http.Server{

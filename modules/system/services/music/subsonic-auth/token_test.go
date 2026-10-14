@@ -241,10 +241,10 @@ func TestParseTokenKey(t *testing.T) {
 
 func TestParseTokenTTL(t *testing.T) {
 	tests := map[string]time.Duration{
-		"24h":  24 * time.Hour,
-		"7d":   7 * 24 * time.Hour,
-		"30d":  30 * 24 * time.Hour,
-		"90m":  90 * time.Minute,
+		"24h": 24 * time.Hour,
+		"7d":  7 * 24 * time.Hour,
+		"30d": 30 * 24 * time.Hour,
+		"90m": 90 * time.Minute,
 	}
 	for in, want := range tests {
 		got, err := parseTokenTTL(in)

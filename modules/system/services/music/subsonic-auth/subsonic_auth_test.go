@@ -179,6 +179,11 @@ func fakeUpstream(t *testing.T, cap *upstreamCapture) *httptest.Server {
 
 func newTestServer(t *testing.T, keycloakURL string, upstreamURL string, ttl time.Duration) *server {
 	t.Helper()
+	return newTestServerWithStore(t, keycloakURL, upstreamURL, ttl, newPATStore("", nil))
+}
+
+func newTestServerWithStore(t *testing.T, keycloakURL string, upstreamURL string, ttl time.Duration, store *patStore) *server {
+	t.Helper()
 	u, err := url.Parse(upstreamURL)
 	if err != nil {
 		t.Fatalf("parse upstream: %v", err)
@@ -192,6 +197,7 @@ func newTestServer(t *testing.T, keycloakURL string, upstreamURL string, ttl tim
 		cache:          newCredCache(ttl, 16),
 		signer:         testSigner(t, ttl),
 		validator:      v,
+		patStore:       store,
 		upstream:       u,
 	})
 }
