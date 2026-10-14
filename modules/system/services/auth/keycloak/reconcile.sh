@@ -14,6 +14,7 @@ ENV_FILE="@ENV_FILE@"
 CONTAINER="@CONTAINER@"
 PROFILE="@PROFILE_JSON@"
 DEFAULT_ROLES="@DEFAULT_ROLES@"
+SERVICE_ACCOUNT_ROLES="@SERVICE_ACCOUNT_ROLES@"
 
 if ! curl -fsS "http://127.0.0.1:${PORT}/realms/master/.well-known/openid-configuration" >/dev/null 2>&1; then
   echo "Keycloak not ready on :${PORT}; the timer will retry."
@@ -120,5 +121,17 @@ for r in ${DEFAULT_ROLES}; do
     kcadm add-roles -r "${REALM}" --rname "${default_composite}" --rolename "${r}" || true
   fi
 done
+
+# Grant declared client roles to a service-account client's service account (e.g.
+# a read-only directory reader). Idempotent: re-adding is a no-op.
+if [ -n "${SERVICE_ACCOUNT_ROLES}" ]; then
+  jq -r '.[] | "\(.clientId) \(.client) \(.roles | join(","))"' "${SERVICE_ACCOUNT_ROLES}" 2>/dev/null |
+    while read -r cid client roles; do
+      for r in $(printf '%s' "${roles}" | tr ',' ' '); do
+        kcadm add-roles -r "${REALM}" --uusername "service-account-${cid}" \
+          --cclientid "${client}" --rolename "${r}" >/dev/null 2>&1 || true
+      done
+    done
+fi
 
 exit 0

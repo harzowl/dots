@@ -132,6 +132,7 @@ mkDotsModule {
           "userProfile"
           "defaultRequiredActions"
           "defaultRoles"
+          "serviceAccountRoles"
         ]
       );
 
@@ -141,6 +142,17 @@ mkDotsModule {
         roles = realm.roles or { };
         clients = realm.clients or [ ];
       };
+
+      # Client roles to grant a service-account client's service account (e.g.
+      # `realm-management:view-users` for a read-only directory reader). Not a
+      # realm-representation field, and `partialImport` cannot carry it, so the
+      # reconcile applies it: `[{ clientId; client; roles = [ … ]; }]`.
+      serviceAccountRoles = realm.serviceAccountRoles or [ ];
+      serviceAccountsJson =
+        if serviceAccountRoles != [ ] then
+          (pkgs.formats.json { }).generate "service-accounts.json" serviceAccountRoles
+        else
+          null;
 
       # The realm's declarative user profile (which fields users may self-edit in
       # the Account Console). `partialImport` does not carry it, so the reconcile
@@ -188,6 +200,7 @@ mkDotsModule {
             "@REALM_ADMINS@"
             "@DEFAULT_REQUIRED_ACTIONS@"
             "@DEFAULT_ROLES@"
+            "@SERVICE_ACCOUNT_ROLES@"
             "@REALM_UPDATE@"
             "@ENV_FILE@"
             "@CONTAINER@"
@@ -201,6 +214,7 @@ mkDotsModule {
             (lib.concatStringsSep " " cfg.realmAdmins)
             (lib.concatStringsSep " " (realm.defaultRequiredActions or [ ]))
             (lib.concatStringsSep " " (realm.defaultRoles or [ ]))
+            (if serviceAccountsJson != null then toString serviceAccountsJson else "")
             realmUpdate
             cfg.envFile
             "keycloak"
