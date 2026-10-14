@@ -40,4 +40,14 @@ done
 if [ "$fail" -ne 0 ]; then
   exit 1
 fi
+
+# A GitHub noreply identity must not flag its generic `users` label. Run the
+# fixture under a noreply identity separately, since the run above injects one
+# synthetic identity for all cases.
+if ! PDG_EMAIL="123+someone@users.noreply.github.com" PDG_FQDN="host.example" PDG_USER="someone" \
+  bash "$guard" "$dir/cases/negatives/noreply-users.txt" >/dev/null 2>&1; then
+  echo "FAIL (a noreply identity must be ignored)" >&2
+  exit 1
+fi
+
 echo "personal-data-test: ${#positive[@]} positive, ${#negative[@]} negative — all pass" >&2

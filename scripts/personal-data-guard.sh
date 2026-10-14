@@ -37,6 +37,17 @@ if [[ "$email" == *@* ]]; then
   label="${domain%%.*}"
 fi
 
+# A GitHub noreply address is deliberately non-identifying, and its domain label
+# (`users`) is generic prose that would match the word in any file — so drop the
+# email/domain needles for it; the login is still checked.
+case "$domain" in
+  *.noreply.github.com)
+    email=""
+    domain=""
+    label=""
+    ;;
+esac
+
 # A bare label only matches safely when it is distinctive: skip public mail
 # providers (ordinary prose) and short or dotless domains.
 if [[ "$domain" != *.* || ${#label} -lt 4 ]]; then
