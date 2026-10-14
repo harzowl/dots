@@ -123,14 +123,15 @@ mkDotsModule {
       hostname = if cfg.hostname != null then cfg.hostname else "auth.${domain}";
       inherit (cfg) realm;
 
-      # `userProfile` and `defaultRequiredActions` are not fields of Keycloak's
-      # realm representation (the live realm gets them from the reconcile,
-      # below) — keep them out of the imported JSON so a fresh `--import-realm`
-      # never sees an unknown field.
+      # `userProfile`, `defaultRequiredActions` and `defaultRoles` are not fields
+      # of Keycloak's realm representation (the live realm gets them from the
+      # reconcile, below) — keep them out of the imported JSON so a fresh
+      # `--import-realm` never sees an unknown field.
       realmJson = (pkgs.formats.json { }).generate "realm.json" (
         lib.removeAttrs realm [
           "userProfile"
           "defaultRequiredActions"
+          "defaultRoles"
         ]
       );
 
@@ -186,6 +187,7 @@ mkDotsModule {
             "@PROFILE_JSON@"
             "@REALM_ADMINS@"
             "@DEFAULT_REQUIRED_ACTIONS@"
+            "@DEFAULT_ROLES@"
             "@REALM_UPDATE@"
             "@ENV_FILE@"
             "@CONTAINER@"
@@ -198,6 +200,7 @@ mkDotsModule {
             (if profileJson != null then toString profileJson else "")
             (lib.concatStringsSep " " cfg.realmAdmins)
             (lib.concatStringsSep " " (realm.defaultRequiredActions or [ ]))
+            (lib.concatStringsSep " " (realm.defaultRoles or [ ]))
             realmUpdate
             cfg.envFile
             "keycloak"
@@ -272,6 +275,7 @@ mkDotsModule {
               pkgs.docker
               pkgs.coreutils
               pkgs.gnugrep
+              pkgs.jq
             ];
             serviceConfig.Type = "oneshot";
             script = reconcile;

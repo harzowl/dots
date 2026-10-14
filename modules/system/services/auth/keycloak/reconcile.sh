@@ -13,6 +13,7 @@ PARTIAL="@PARTIAL_JSON@"
 ENV_FILE="@ENV_FILE@"
 CONTAINER="@CONTAINER@"
 PROFILE="@PROFILE_JSON@"
+DEFAULT_ROLES="@DEFAULT_ROLES@"
 
 if ! curl -fsS "http://127.0.0.1:${PORT}/realms/master/.well-known/openid-configuration" >/dev/null 2>&1; then
   echo "Keycloak not ready on :${PORT}; the timer will retry."
@@ -99,6 +100,25 @@ for a in $(kcadm get authentication/required-actions -r "${REALM}" --fields alia
     *) on=false ;;
   esac
   kcadm update "authentication/required-actions/${a}" -r "${REALM}" -s defaultAction="${on}" || true
+done
+
+# Authoritative: the realm's *default* roles are exactly the declared set. The
+# built-ins (offline_access, uma_authorization) are added to every user by
+# Keycloak, and a PAT picker that lists a user's realm roles would offer them —
+# so drop what is not declared and add what is.
+default_composite="default-roles-${REALM}"
+for r in $(kcadm get "roles/${default_composite}/composites" -r "${REALM}" 2>/dev/null \
+  | jq -r '.[] | select(.clientRole == false) | .name' 2>/dev/null); do
+  case " ${DEFAULT_ROLES} " in
+    *" ${r} "*) ;;
+    *) kcadm remove-roles -r "${REALM}" --rname "${default_composite}" --rolename "${r}" || true ;;
+  esac
+done
+for r in ${DEFAULT_ROLES}; do
+  if ! kcadm get "roles/${default_composite}/composites" -r "${REALM}" 2>/dev/null \
+    | jq -e --arg r "${r}" 'any(.[]; .clientRole == false and .name == $r)' >/dev/null 2>&1; then
+    kcadm add-roles -r "${REALM}" --rname "${default_composite}" --rolename "${r}" || true
+  fi
 done
 
 exit 0
