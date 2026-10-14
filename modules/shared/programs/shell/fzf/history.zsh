@@ -11,7 +11,7 @@ fzf-history-widget() {
   selected=$(
     "@HISTORY_DATE@" < "$data" \
       | fzf --height=40% --min-height=20+ --bind=ctrl-z:ignore \
-          --read0 --no-multi-line --tabstop=4 --ansi \
+          --read0 --no-multi-line --tabstop=4 --ansi --tac \
           --delimiter=$'\t' --accept-nth=2.. --multi \
           --query="${LBUFFER}"
   )

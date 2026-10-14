@@ -1,12 +1,11 @@
 # The single home for the history search's presentation: the picker feeds
 # `<timestamp>\t<command>` records in here (NUL-framed, so a multi-line command
-# is one record) and gets a coloured `<date>\t<command>` back. GNU `date`
-# normalises the timestamp; colours are base16 palette slots, so they follow the
-# terminal's scheme rather than hardcoding hex. fzf strips the colours on accept.
+# is one record) and gets `<date>\t<command>` back. The date takes one base16
+# slot; the command keeps its own syntax colours, which fish_indent draws from
+# the exported fish_color_* theme variables. fzf strips them again on accept.
 set -u
 
 date_fmt=$'\e[38;5;8m' # base03
-cmd_fmt=$'\e[38;5;2m'  # base0b
 reset=$'\e[0m'
 
 fmt() {
@@ -17,13 +16,22 @@ fmt() {
   fi
 }
 
+emit() {
+  local colored
+  if [ -n "${2:-}" ]; then
+    colored=$("@FISH_INDENT@" --only-indent --ansi 2>/dev/null <<<"$2") || colored=$2
+    [ -n "$colored" ] || colored=$2
+  else
+    colored=$2
+  fi
+  printf '%s%s%s\t%s\0' "$date_fmt" "$(fmt "$1")" "$reset" "$colored"
+}
+
 while IFS= read -r -d '' record; do
   stamp=${record%%$'\t'*}
   if [ "$stamp" = "$record" ]; then
-    stamp=''
-    cmd=$record
+    emit '' "$record"
   else
-    cmd=${record#"$stamp"$'\t'}
+    emit "$stamp" "${record#"$stamp"$'\t'}"
   fi
-  printf '%s%s%s\t%s%s%s\0' "$date_fmt" "$(fmt "$stamp")" "$reset" "$cmd_fmt" "$cmd" "$reset"
 done

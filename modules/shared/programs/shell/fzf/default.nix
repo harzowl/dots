@@ -79,12 +79,13 @@ mkSharedProgram {
       inherit (args) lib pkgs;
 
       # One formatter, shared by every shell: the history source emits
-      # `<timestamp>\t<command>` records and this renders the date. `@DATE@`
-      # pins GNU coreutils' `date`, which the formatter normalises with.
+      # `<timestamp>\t<command>` records, this renders the date with GNU
+      # coreutils' `date` and syntax-colours the command with fish_indent.
       historyDate = pkgs.writeShellScript "history-date" (
-        lib.replaceStrings [ "@DATE@" ] [ "${pkgs.coreutils}/bin/date" ] (
-          builtins.readFile ./history-date.sh
-        )
+        lib.replaceStrings
+          [ "@DATE@" "@FISH_INDENT@" ]
+          [ "${pkgs.coreutils}/bin/date" "${pkgs.fish}/bin/fish_indent" ]
+          (builtins.readFile ./history-date.sh)
       );
 
       widget =

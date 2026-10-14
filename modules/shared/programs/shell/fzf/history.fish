@@ -16,8 +16,16 @@ function fzf-history-widget -d "Show atuin history with a local date column"
         return
     end
 
+    # fish_indent colours the command from the environment, so the theme's
+    # colours must be exported for the formatter's child to see them.
+    for var in fish_color_normal fish_color_command fish_color_param fish_color_quote \
+            fish_color_comment fish_color_operator fish_color_redirection fish_color_escape \
+            fish_color_error fish_color_end fish_color_autosuggestion fish_color_valid_path
+        set -q $var; and set -x $var $$var
+    end
+
     set -l fzf_args --height=40% --min-height=20+ --bind=ctrl-z:ignore \
-        --read0 --print0 --no-multi-line --tabstop=4 --ansi \
+        --read0 --print0 --no-multi-line --tabstop=4 --ansi --tac \
         --delimiter=\t --accept-nth=2.. --multi
     test -n "$buf"; and set -a fzf_args --query="$buf"
 
