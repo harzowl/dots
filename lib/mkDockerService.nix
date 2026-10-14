@@ -349,13 +349,15 @@
                   s = toString p;
                 in
                 if lib.hasInfix ":" s then "${s}/udp" else "${s}:${s}/udp"
-              ) spec.udpPorts;
+              ) (spec.udpPorts or [ ]);
           };
         };
       };
 
       networking.firewall.allowedTCPPorts = lib.mkIf spec.openFirewall (map hostPort spec.ports);
-      networking.firewall.allowedUDPPorts = lib.mkIf spec.openFirewall (map hostPort spec.udpPorts);
+      networking.firewall.allowedUDPPorts = lib.mkIf spec.openFirewall (
+        map hostPort (spec.udpPorts or [ ])
+      );
 
       # Restart the container when a runtime env file's *contents* change.
       #
