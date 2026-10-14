@@ -71,6 +71,10 @@ Every commit follows [Conventional Commits](https://www.conventionalcommits.org/
   commit that does otherwise. It flags repeats only when they are siblings in one
   attrset literal, never one split across `lib.mkIf`/`lib.optionalAttrs`/`let`
   fragments. Fixtures: `tests/nest-check/run.sh`.
+- **Keep the tree statix/deadnix-clean.** `scripts/lints.sh` — run by the
+  pre-commit hook over the staged files, and as the `lints` flake check over the
+  whole tree — fails on any statix or deadnix finding. Fix the finding; only a
+  genuine false positive may carry an inline suppression, and only that one line.
 - **A comment must earn its place.** Comment only a non-obvious *why* — a
   security invariant, a footgun, a workaround — never what the code already
   says, never structure, never the next line. If deleting it loses no

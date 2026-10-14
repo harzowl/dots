@@ -57,6 +57,28 @@
       checks.x86_64-linux = {
         subsonic-auth = self.packages.x86_64-linux.subsonic-auth;
 
+        # statix + deadnix over the flake's own Nix sources; a finding fails
+        # `nix flake check`.
+        lints =
+          let
+            pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+            src = pkgs.lib.fileset.toSource {
+              root = ./.;
+              fileset = pkgs.lib.fileset.fileFilter (file: file.hasExt "nix") ./.;
+            };
+          in
+          pkgs.runCommand "lints"
+            {
+              nativeBuildInputs = [
+                pkgs.statix
+                pkgs.deadnix
+              ];
+            }
+            ''
+              bash ${./scripts/lints.sh} ${src}
+              touch "$out"
+            '';
+
         # Credential scan over the whole flake source (test files and fixtures
         # included): gitleaks' format rules plus scripts/secret-scan.py's
         # high-entropy token-shape check. Fails the build on any credential-shaped

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Format staged Nix files with the flake's formatter and re-stage them, then run
-# the repeated-attribute-path checker over them. The checker is
-# `scripts/check-nest.sh` (see AGENTS.md); it exits 2 when awk is missing, which
-# fails the commit loudly rather than skipping the check.
+# the repeated-attribute-path checker (`scripts/check-nest.sh`) and the linters
+# (`scripts/lints.sh`, with statix + deadnix from the flake's own lock) over
+# them. Each fails the commit loudly rather than skipping the check.
 set -euo pipefail
 
 files=$(git diff --cached --name-only --diff-filter=ACM -- '*.nix')
@@ -15,3 +15,6 @@ git add -- $files
 
 # shellcheck disable=SC2086
 scripts/check-nest.sh $files
+
+# shellcheck disable=SC2086
+nix shell --inputs-from . nixpkgs#statix nixpkgs#deadnix -c bash scripts/lints.sh $files
