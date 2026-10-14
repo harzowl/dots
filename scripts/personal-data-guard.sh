@@ -66,6 +66,11 @@ done
 label_re=$(ere_escape "$label")
 login_re=$(ere_escape "$login")
 
+if [ "${#ci_needles[@]}" -eq 0 ] && [ -z "$label" ] && [ -z "$login" ]; then
+  echo "personal-data-guard: no identity derived (no git email, hostname or login); nothing to check" >&2
+  exit 0
+fi
+
 found=0
 for f in "$@"; do
   case "$f" in LICENSE | */LICENSE) continue ;; esac
