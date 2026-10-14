@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # Flag assignments whose dotted LHS paths share a prefix inside the same
-# attrset literal (or the same `let` body) — the prefix should be nested once.
+# attrset literal (or the same `let` binding scope) — the prefix should be
+# nested once.
 #
-# Two assignments are compared only when they are direct children of the *same*
-# `{ ... }` literal at the *same* `let` generation, so a repeat split across
-# separate `lib.mkIf`/`lib.mkMerge`/`lib.optionalAttrs`/`let` fragments — where
-# nesting would change semantics — is never flagged. Strings and comments are
-# blanked first, so example paths in prose are ignored.
+# Two assignments are compared only when they are direct children of the same
+# scope: a `{ ... }` literal, or the bindings of the same `let`. A `let` opens
+# a scope frame that its matching `in` closes, so an inline `let ... in` used as
+# a value (e.g. `x = let y = 1; in y;`) opens and closes inside that value and
+# does not split its siblings, while a `let x = ...; in <body>` still separates
+# its bindings from the body. That keeps a repeat split across separate
+# `lib.mkIf`/`lib.mkMerge`/`lib.optionalAttrs`/`let` scopes — where nesting
+# would change semantics — unflagged. Strings and comments are blanked first, so
+# example paths in prose are ignored.
 #
 # Usage: check-nest.sh FILE...
 # Exit status: 0 clean, 1 findings, 2 usage/awk error.
@@ -26,7 +31,7 @@ program=$(cat <<'AWK'
 function reset_file() {
   ctx_top = 1; ctype[1] = "code"; cbrace[1] = 0
   st_mode = "code"
-  frame_top = 0; frame_counter = 0; letgen = 0
+  frame_top = 0; frame_counter = 0
   n_assigns = 0
   delete apath; delete aline; delete akey
 }
@@ -34,7 +39,7 @@ function reset_file() {
 function fkey(   k, s) {
   s = ""
   for (k = 1; k <= frame_top; k++) s = s (k > 1 ? "." : "") frame_stack[k]
-  return s "#" letgen
+  return s
 }
 
 # Blank a line's strings and comments. Braces stay in the line, so the anchored
@@ -54,12 +59,23 @@ function scan(line,   i, len, ch, two, three, cur, prev, nxt, blank) {
     cur = ctype[ctx_top]
     if (cur == "code") {
       if (ch == "#") break
+      if (ch == "l" && three == "let") {
+        prev = (i == 1) ? "" : substr(line, i - 1, 1)
+        nxt = substr(line, i + 3, 1)
+        if (prev !~ /[A-Za-z0-9_'.-]/ && nxt !~ /[A-Za-z0-9_'-]/) {
+          blank = blank "let"; i += 3
+          frame_kind[++frame_top] = "l"
+          frame_stack[frame_top] = ++frame_counter
+          continue
+        }
+      }
       if (ch == "i" && two == "in") {
         prev = (i == 1) ? "" : substr(line, i - 1, 1)
         nxt = substr(line, i + 2, 1)
         if (prev !~ /[A-Za-z0-9_'.-]/ && nxt !~ /[A-Za-z0-9_'-]/) {
-          letgen++
-          blank = blank "in"; i += 2; continue
+          blank = blank "in"; i += 2
+          if (frame_top > 0 && frame_kind[frame_top] == "l") frame_top--
+          continue
         }
       }
       if (two == "/*") { blank = blank "  "; i += 2; st_mode = "bcomment"; continue }
@@ -68,7 +84,8 @@ function scan(line,   i, len, ch, two, three, cur, prev, nxt, blank) {
       if (ch == "{") {
         blank = blank ch; i++
         cbrace[ctx_top]++
-        frame_stack[++frame_top] = ++frame_counter
+        frame_kind[++frame_top] = "b"
+        frame_stack[frame_top] = ++frame_counter
         continue
       }
       if (ch == "}") {
