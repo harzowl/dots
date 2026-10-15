@@ -47,6 +47,25 @@
         description = "Container backend; enabling a service turns it on for the host.";
       };
 
+      startLimitBurst = opt "startLimitBurst" {
+        type = lib.types.int;
+        default = 5;
+        description = ''
+          Consecutive failed starts within `startLimitIntervalSec` before the unit
+          is put into `failed`. Bounds a restart loop so a broken container fails
+          the activation fast instead of restarting forever.
+        '';
+      };
+
+      startLimitIntervalSec = opt "startLimitIntervalSec" {
+        type = lib.types.int;
+        default = 60;
+        description = ''
+          Window (seconds) over which `startLimitBurst` is counted. `0` disables
+          the limit (restart forever) — the gates set this deliberately.
+        '';
+      };
+
       ports = opt "ports" {
         type = lib.types.listOf (lib.types.either lib.types.port lib.types.str);
         default = [ ];
@@ -398,6 +417,15 @@
             "${spec.backend}-${spec.name}" = {
               after = dependsOnUnits;
               requires = dependsOnUnits;
+            };
+          }
+          // {
+            # A container that keeps exiting must not loop forever: bound the
+            # restarts so the unit fails and the activation reports it. `mkDefault`
+            # so a consumer (e.g. the gates) can opt out.
+            "${spec.backend}-${spec.name}" = {
+              startLimitBurst = lib.mkDefault (spec.startLimitBurst or 5);
+              startLimitIntervalSec = lib.mkDefault (spec.startLimitIntervalSec or 60);
             };
           }
           // lib.optionalAttrs managedNetwork {
