@@ -7,6 +7,12 @@
 #
 #   Navidrome  <-  naviscout  <-  { the navidrome gate, the subsonic-auth shim }
 #
+# With `settings.nativeEnabled = true` it fronts the *whole* host instead of only
+# `/rest`: every other path (the web UI, `/api`, `/share`, `/auth`) is relayed
+# verbatim, and Navidrome's native `/api` list responses gain catalogue entries,
+# so Navidrome's own web UI shows discovery. `settings.nativeEndpoints` picks the
+# collections (`album`, `artist`, `song`) to extend.
+#
 # Streaming a catalogue (phantom) track shells out to `yt-dlp`, which needs
 # `ffmpeg` and a CA trust store, so the binary is wrapped in a Nix-built OCI
 # image the host loads (`package` has no default: the consumer passes its own
