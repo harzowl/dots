@@ -20,6 +20,11 @@
 # user-defined network and is reached by the front ends on its container IP; it
 # is published loopback-only so nothing off-host reaches it.
 #
+# A phantom play can be scrobbled to Last.fm as the user who played it, using
+# the per-user session key Navidrome already stores rather than a second login:
+# `navidromeDataDir` mounts Navidrome's data directory read-only, and the
+# container reads `navidrome.db` with sqlite3 to resolve the key.
+#
 # Config is `NAVISCOUT_<UPPER_SNAKE>` env vars. Non-secret settings go through
 # `settings` (camelCase, mapped like navidrome's `ND_*`); `upstream` and `port`
 # become `NAVISCOUT_UPSTREAM_URL` / `NAVISCOUT_LISTEN`. Secrets (the Last.fm and
@@ -84,6 +89,18 @@ mkDotsModule {
         '';
       };
 
+      navidromeDataDir = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Host directory holding Navidrome's SQLite database, mounted read-only
+          at the same path so naviscout can resolve a user's linked Last.fm
+          session key for scrobbling (`NAVISCOUT_LASTFM_DB_PATH` points at
+          `<navidromeDataDir>/navidrome.db`). When null, scrobbling has no
+          session-key source and is left off.
+        '';
+      };
+
       secretEnv = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = { };
@@ -139,6 +156,9 @@ mkDotsModule {
           cacheDir = cfg.stateDir;
           cacheEnabled = true;
         }
+        // lib.optionalAttrs (cfg.navidromeDataDir != null) {
+          lastfmDbPath = "${cfg.navidromeDataDir}/navidrome.db";
+        }
         // cfg.settings
       );
 
@@ -146,10 +166,12 @@ mkDotsModule {
       containerImage = pkgs.dockerTools.buildLayeredImage {
         inherit (cfg) name;
         tag = imageTag;
-        # The runtime needs yt-dlp to resolve phantom tracks and a trust store
-        # for every outbound TLS call.
+        # The runtime needs yt-dlp to resolve phantom tracks, sqlite3 to read
+        # Navidrome's database for scrobbling, and a trust store for every
+        # outbound TLS call.
         contents = [
           pkgs.cacert
+          pkgs.sqlite
           pkgs.yt-dlp
         ];
         # yt-dlp wants a writable temp dir.
@@ -217,7 +239,10 @@ mkDotsModule {
           settings = { };
           environmentFiles = containerEnvFiles;
           ports = [ "127.0.0.1:${toString cfg.port}:${toString cfg.port}" ];
-          volumes = cfg.volumes ++ lib.optional (cfg.stateDir != null) "${cfg.stateDir}:${cfg.stateDir}";
+          volumes =
+            cfg.volumes
+            ++ lib.optional (cfg.stateDir != null) "${cfg.stateDir}:${cfg.stateDir}"
+            ++ lib.optional (cfg.navidromeDataDir != null) "${cfg.navidromeDataDir}:${cfg.navidromeDataDir}:ro";
         };
         inherit defaults;
       } args)
