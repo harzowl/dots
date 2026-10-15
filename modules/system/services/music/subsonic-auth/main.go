@@ -22,6 +22,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid UPSTREAM %q: %v", cfg.upstream, err)
 	}
+	routes := make([]upstreamRoute, 0, len(cfg.routes))
+	for _, rt := range cfg.routes {
+		u, err := url.Parse(rt.upstream)
+		if err != nil {
+			log.Fatalf("invalid ROUTES upstream %q: %v", rt.upstream, err)
+		}
+		routes = append(routes, upstreamRoute{path: rt.path, upstream: u})
+	}
 	v, err := newValidator(cfg.keycloakURL, cfg.realm, cfg.requiredRole, &http.Client{Timeout: cfg.validateTimeout})
 	if err != nil {
 		log.Fatalf("invalid KEYCLOAK_URL %q: %v", cfg.keycloakURL, err)
@@ -44,6 +52,7 @@ func main() {
 		validator:      v,
 		patStore:       store,
 		upstream:       upstream,
+		routes:         routes,
 	})
 	httpServer := &http.Server{
 		Addr:              cfg.listenAddr,

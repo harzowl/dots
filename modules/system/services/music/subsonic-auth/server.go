@@ -50,7 +50,21 @@ type server struct {
 	signer         *tokenSigner
 	validator      *validator
 	patStore       *patStore
-	reverseProxy   *httputil.ReverseProxy
+	routes         []routeProxy
+	fallback       *httputil.ReverseProxy
+}
+
+type routeProxy struct {
+	path  string
+	proxy *httputil.ReverseProxy
+}
+
+// upstreamRoute binds a path prefix to an upstream base URL, so the front proxy
+// can send a subpath (e.g. `/rest` to a discovery proxy) somewhere other than
+// the fallback `upstream`.
+type upstreamRoute struct {
+	path     string
+	upstream *url.URL
 }
 
 type serverDeps struct {
@@ -60,15 +74,23 @@ type serverDeps struct {
 	validator      *validator
 	patStore       *patStore
 	upstream       *url.URL
+	routes         []upstreamRoute
 }
 
 func newServer(d serverDeps) *server {
-	rp := httputil.NewSingleHostReverseProxy(d.upstream)
 	// Stream responses (audio, Range) without buffering.
-	rp.FlushInterval = -1
+	newProxy := func(u *url.URL) *httputil.ReverseProxy {
+		rp := httputil.NewSingleHostReverseProxy(u)
+		rp.FlushInterval = -1
+		return rp
+	}
 	store := d.patStore
 	if store == nil {
 		store = newPATStore("", nil)
+	}
+	routes := make([]routeProxy, 0, len(d.routes))
+	for _, rt := range d.routes {
+		routes = append(routes, routeProxy{path: rt.path, proxy: newProxy(rt.upstream)})
 	}
 	return &server{
 		identityHeader: d.identityHeader,
@@ -76,8 +98,38 @@ func newServer(d serverDeps) *server {
 		signer:         d.signer,
 		validator:      d.validator,
 		patStore:       store,
-		reverseProxy:   rp,
+		routes:         routes,
+		fallback:       newProxy(d.upstream),
 	}
+}
+
+// proxyFor returns the reverse proxy for a request path: the longest route whose
+// path is a whole-segment prefix of p, else the fallback upstream.
+func (s *server) proxyFor(p string) *httputil.ReverseProxy {
+	best := -1
+	for i := range s.routes {
+		if !pathUnderPrefix(p, s.routes[i].path) {
+			continue
+		}
+		if best == -1 || len(s.routes[i].path) > len(s.routes[best].path) {
+			best = i
+		}
+	}
+	if best == -1 {
+		return s.fallback
+	}
+	return s.routes[best].proxy
+}
+
+// pathUnderPrefix reports whether p lies under prefix as whole path segments:
+// p == prefix, or p begins with prefix + "/". So `/rest` matches `/rest` and
+// `/rest/ping.view` but not `/restless`.
+func pathUnderPrefix(p, prefix string) bool {
+	base := strings.TrimSuffix(prefix, "/")
+	if p == base {
+		return true
+	}
+	return base == "" || strings.HasPrefix(p, base+"/")
 }
 
 func (s *server) Handler() http.Handler { return http.HandlerFunc(s.handle) }
@@ -283,7 +335,7 @@ func (s *server) proxy(w http.ResponseWriter, r *http.Request, identity string, 
 		r.Header.Set("Content-Length", strconv.Itoa(len(buf)))
 	}
 
-	s.reverseProxy.ServeHTTP(w, r)
+	s.proxyFor(r.URL.Path).ServeHTTP(w, r)
 }
 
 // proxyAnonymous forwards a public request (Navidrome's `/share/img/<token>`
@@ -295,7 +347,7 @@ func (s *server) proxyAnonymous(w http.ResponseWriter, r *http.Request) {
 	r.Header.Del(ndAuthHeader)
 	scrubIdentityHeaders(r.Header)
 	stripSubsonicCreds(r.URL)
-	s.reverseProxy.ServeHTTP(w, r)
+	s.proxyFor(r.URL.Path).ServeHTTP(w, r)
 }
 
 func (s *server) writeJSON(w http.ResponseWriter, status int, body any) {

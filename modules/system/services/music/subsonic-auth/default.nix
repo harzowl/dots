@@ -38,7 +38,8 @@
 # `alpine` image (no custom image build). It joins a user-defined network with a
 # fixed IP so Navidrome can trust exactly that address, and relies on the front
 # proxy to only route API paths here; it strips every client-supplied identity
-# header itself regardless.
+# header itself regardless. A `routes` entry sends a subpath to a different
+# upstream (e.g. `/rest` to a discovery proxy), matched by longest path prefix.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
@@ -72,7 +73,30 @@ mkDotsModule {
       upstream = lib.mkOption {
         type = lib.types.str;
         default = "http://172.30.0.10:4533";
-        description = "Navidrome base URL the shim proxies to.";
+        description = "Navidrome base URL the shim proxies to (the fallback for any path no `routes` entry matches).";
+      };
+      routes = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              path = lib.mkOption {
+                type = lib.types.str;
+                description = "Path prefix whose requests are proxied to `upstream`.";
+              };
+              upstream = lib.mkOption {
+                type = lib.types.str;
+                description = "Base URL requests under `path` are proxied to.";
+              };
+            };
+          }
+        );
+        default = [ ];
+        description = ''
+          Path → upstream routes, matched by the longest whole-segment path prefix
+          (`/rest` matches `/rest` and `/rest/…`, but not `/restless`), with
+          `upstream` as the fallback. Lets a subpath go to a different upstream —
+          e.g. `/rest` to a discovery proxy while the rest goes to Navidrome.
+        '';
       };
       keycloakUrl = lib.mkOption {
         type = lib.types.str;
@@ -161,7 +185,7 @@ mkDotsModule {
   toConfig =
     args: cfg:
     let
-      inherit (args) pkgs;
+      inherit (args) lib pkgs;
       binary = pkgs.callPackage ./package.nix { };
     in
     mkDockerService.config {
@@ -177,6 +201,7 @@ mkDotsModule {
         settings = {
           listenAddr = "0.0.0.0:${toString cfg.port}";
           inherit (cfg) upstream;
+          routes = lib.concatMapStringsSep "," (r: "${r.path}=${r.upstream}") cfg.routes;
           inherit (cfg) keycloakUrl;
           keycloakRealm = cfg.realm;
           keycloakRequiredRole = cfg.requiredRole;

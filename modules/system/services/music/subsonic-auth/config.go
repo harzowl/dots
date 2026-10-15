@@ -14,6 +14,7 @@ import (
 type config struct {
 	listenAddr      string
 	upstream        string
+	routes          []route
 	keycloakURL     string
 	realm           string
 	requiredRole    string
@@ -39,6 +40,11 @@ type config struct {
 	tokenAud  string
 }
 
+type route struct {
+	path     string
+	upstream string
+}
+
 func loadConfig() (config, error) {
 	cfg := config{
 		listenAddr:      getenv("LISTEN_ADDR", "0.0.0.0:8080"),
@@ -53,6 +59,12 @@ func loadConfig() (config, error) {
 		tokenKid:        getenv("SUBSONIC_TOKEN_KID", "1"),
 		tokenAud:        getenv("SUBSONIC_TOKEN_AUD", tokenAudience),
 	}
+
+	routes, err := parseRoutes(os.Getenv("ROUTES"))
+	if err != nil {
+		return config{}, err
+	}
+	cfg.routes = routes
 
 	// The realm is the consumer's, not the shim's: never default it.
 	if cfg.realm == "" {
@@ -149,6 +161,32 @@ func parseTokenTTL(v string) (time.Duration, error) {
 		}
 	}
 	return 0, fmt.Errorf("invalid duration %q", v)
+}
+
+// parseRoutes parses the ROUTES env var: a comma-separated list of
+// `<path>=<upstream>` entries. An empty value yields no routes, so every
+// request takes the fallback `upstream`.
+func parseRoutes(raw string) ([]route, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var routes []route
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		path, upstream, ok := strings.Cut(entry, "=")
+		path, upstream = strings.TrimSpace(path), strings.TrimSpace(upstream)
+		if !ok || path == "" || upstream == "" {
+			return nil, fmt.Errorf("ROUTES: invalid entry %q, want <path>=<upstream>", entry)
+		}
+		if !strings.HasPrefix(path, "/") {
+			return nil, fmt.Errorf("ROUTES: path %q must start with /", path)
+		}
+		routes = append(routes, route{path: path, upstream: upstream})
+	}
+	return routes, nil
 }
 
 func getenv(key, fallback string) string {

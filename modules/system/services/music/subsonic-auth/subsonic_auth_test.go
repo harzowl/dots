@@ -868,3 +868,139 @@ func TestValidatorSendsRequiredRole(t *testing.T) {
 		})
 	}
 }
+
+func newTestServerWithRoutes(t *testing.T, keycloakURL, fallbackURL, restURL string, ttl time.Duration) *server {
+	t.Helper()
+	mustURL := func(raw string) *url.URL {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatalf("parse %q: %v", raw, err)
+		}
+		return u
+	}
+	v, err := newValidator(keycloakURL, "dummy-DO-NOT-USE-realm", "", &http.Client{Timeout: 2 * time.Second})
+	if err != nil {
+		t.Fatalf("validator: %v", err)
+	}
+	return newServer(serverDeps{
+		identityHeader: "X-Forwarded-Preferred-Username",
+		cache:          newCredCache(ttl, 16),
+		signer:         testSigner(t, ttl),
+		validator:      v,
+		patStore:       newPATStore("", nil),
+		upstream:       mustURL(fallbackURL),
+		routes:         []upstreamRoute{{path: "/rest", upstream: mustURL(restURL)}},
+	})
+}
+
+// TestRouteSelectsUpstream proves a path route (e.g. `/rest` to a discovery
+// proxy) wins over the fallback upstream, and that only a whole-segment prefix
+// matches — `/restless` is not `/rest`.
+func TestRouteSelectsUpstream(t *testing.T) {
+	var kcCalls int32
+	kc := fakeKeycloak(t, "dummy-DO-NOT-USE@example.invalid", "pat-123", &kcCalls)
+	defer kc.Close()
+
+	restCap := &upstreamCapture{}
+	restUp := fakeUpstream(t, restCap)
+	defer restUp.Close()
+	fallbackCap := &upstreamCapture{}
+	fallbackUp := fakeUpstream(t, fallbackCap)
+	defer fallbackUp.Close()
+
+	srv := newTestServerWithRoutes(t, kc.URL, fallbackUp.URL, restUp.URL, time.Minute)
+
+	tests := []struct {
+		name     string
+		path     string
+		headers  map[string]string
+		wantUp   string
+		wantPath string
+	}{
+		{
+			name:     "rest goes to the routed upstream",
+			path:     "/rest/ping.view?u=dummy-DO-NOT-USE%40example.invalid&p=pat-123&v=1.16.1&c=test&f=json",
+			wantUp:   "rest",
+			wantPath: "/rest/ping.view",
+		},
+		{
+			name:     "rest exact goes to the routed upstream",
+			path:     "/rest?u=dummy-DO-NOT-USE%40example.invalid&p=pat-123",
+			wantUp:   "rest",
+			wantPath: "/rest",
+		},
+		{
+			name:     "restless stays on the fallback",
+			path:     "/restless?u=dummy-DO-NOT-USE%40example.invalid&p=pat-123",
+			wantUp:   "fallback",
+			wantPath: "/restless",
+		},
+		{
+			name:     "api stays on the fallback",
+			path:     "/api/keepalive",
+			headers:  map[string]string{ndAuthHeader: "Bearer {token}"},
+			wantUp:   "fallback",
+			wantPath: "/api/keepalive",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			atomic.StoreInt32(&restCap.hits, 0)
+			atomic.StoreInt32(&fallbackCap.hits, 0)
+
+			token, err := srv.signer.Sign("dummy-DO-NOT-USE@example.invalid")
+			if err != nil {
+				t.Fatalf("sign: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodGet, strings.ReplaceAll(tt.path, "{token}", token), nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, strings.ReplaceAll(v, "{token}", token))
+			}
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %q)", rec.Code, rec.Body.String())
+			}
+			gotRest := atomic.LoadInt32(&restCap.hits)
+			gotFallback := atomic.LoadInt32(&fallbackCap.hits)
+			if tt.wantUp == "rest" {
+				if gotRest != 1 || gotFallback != 0 {
+					t.Fatalf("rest hits=%d fallback hits=%d, want 1/0", gotRest, gotFallback)
+				}
+				if restCap.path != tt.wantPath {
+					t.Fatalf("rest upstream path = %q, want %q", restCap.path, tt.wantPath)
+				}
+			} else {
+				if gotFallback != 1 || gotRest != 0 {
+					t.Fatalf("rest hits=%d fallback hits=%d, want 0/1", gotRest, gotFallback)
+				}
+				if fallbackCap.path != tt.wantPath {
+					t.Fatalf("fallback upstream path = %q, want %q", fallbackCap.path, tt.wantPath)
+				}
+			}
+		})
+	}
+}
+
+func TestPathUnderPrefix(t *testing.T) {
+	tests := []struct {
+		path   string
+		prefix string
+		want   bool
+	}{
+		{path: "/rest", prefix: "/rest", want: true},
+		{path: "/rest/", prefix: "/rest", want: true},
+		{path: "/rest/ping.view", prefix: "/rest", want: true},
+		{path: "/restless", prefix: "/rest", want: false},
+		{path: "/api/keepalive", prefix: "/rest", want: false},
+		{path: "/rest", prefix: "/rest/", want: true},
+		{path: "/rest/ping.view", prefix: "/rest/", want: true},
+		{path: "/restless", prefix: "/rest/", want: false},
+	}
+	for _, tt := range tests {
+		if got := pathUnderPrefix(tt.path, tt.prefix); got != tt.want {
+			t.Fatalf("pathUnderPrefix(%q, %q) = %v, want %v", tt.path, tt.prefix, got, tt.want)
+		}
+	}
+}
