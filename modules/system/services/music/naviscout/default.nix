@@ -146,14 +146,13 @@ mkDotsModule {
       containerImage = pkgs.dockerTools.buildLayeredImage {
         inherit (cfg) name;
         tag = imageTag;
-        # The runtime needs yt-dlp (and ffmpeg) to stream phantom tracks and a
-        # trust store for every outbound TLS call.
+        # The runtime needs yt-dlp to resolve phantom tracks and a trust store
+        # for every outbound TLS call.
         contents = [
           pkgs.cacert
           pkgs.yt-dlp
-          pkgs.ffmpeg
         ];
-        # yt-dlp/ffmpeg want a writable temp dir.
+        # yt-dlp wants a writable temp dir.
         extraCommands = ''
           mkdir -p tmp
           chmod 1777 tmp
