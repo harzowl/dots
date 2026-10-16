@@ -107,10 +107,11 @@ mkDotsModule {
         type = lib.types.nullOr lib.types.str;
         default = null;
         description = ''
-          Host path of the durable catalogue SQLite database, mounted read-write
-          at the same path and passed as `NAVISCOUT_CATALOG_DB`. Its directory is
-          created (0700, owned by the container uid) if it is not already covered
-          by `stateDir`. When null the catalogue is not persisted.
+          Host path of the durable SQLite database, mounted read-write at the
+          same path and passed as `NAVISCOUT_CATALOG_DB`. It holds the catalogue
+          store and, in its own tables, the resolved-video store. Its directory
+          is created (0700, owned by the container uid) if it is not already
+          covered by `stateDir`. When null nothing is persisted.
         '';
       };
 
