@@ -83,9 +83,11 @@ mkDotsModule {
         type = lib.types.nullOr lib.types.str;
         default = null;
         description = ''
-          Host directory for the playback cache, mounted read-write at the same
-          path with the cache enabled (`NAVISCOUT_CACHE_DIR`). When null the
-          cache is left off and unmounted.
+          Host directory for the playback cache and the cover-art byte cache,
+          mounted read-write at the same path: the playback cache is the
+          directory itself (`NAVISCOUT_CACHE_DIR`), the cover cache a `covers`
+          subdirectory (`NAVISCOUT_COVER_CACHE_DIR`). When null both are left
+          off and unmounted.
         '';
       };
 
@@ -132,8 +134,9 @@ mkDotsModule {
     let
       inherit (args) lib pkgs;
 
-      # The directories naviscout persists into (the playback cache and the
-      # catalogue database), each mounted at the same path and created once.
+      # The directories naviscout persists into (the playback and cover caches,
+      # and the catalogue database), each mounted at the same path and created
+      # once.
       catalogDir = if cfg.catalogDb != null then builtins.dirOf cfg.catalogDb else null;
       dataDirs = lib.unique (
         lib.optional (cfg.stateDir != null) cfg.stateDir ++ lib.optional (catalogDir != null) catalogDir
@@ -173,6 +176,7 @@ mkDotsModule {
         // lib.optionalAttrs (cfg.stateDir != null) {
           cacheDir = cfg.stateDir;
           cacheEnabled = true;
+          coverCacheDir = "${cfg.stateDir}/covers";
         }
         // lib.optionalAttrs (cfg.navidromeDataDir != null) {
           lastfmDbPath = "${cfg.navidromeDataDir}/navidrome.db";
