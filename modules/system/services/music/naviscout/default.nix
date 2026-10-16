@@ -101,6 +101,17 @@ mkDotsModule {
         '';
       };
 
+      catalogDb = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Host path of the durable catalogue SQLite database, mounted read-write
+          at the same path and passed as `NAVISCOUT_CATALOG_DB`. Its directory is
+          created (0700, owned by the container uid) if it is not already covered
+          by `stateDir`. When null the catalogue is not persisted.
+        '';
+      };
+
       secretEnv = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = { };
@@ -120,6 +131,13 @@ mkDotsModule {
     args: cfg:
     let
       inherit (args) lib pkgs;
+
+      # The directories naviscout persists into (the playback cache and the
+      # catalogue database), each mounted at the same path and created once.
+      catalogDir = if cfg.catalogDb != null then builtins.dirOf cfg.catalogDb else null;
+      dataDirs = lib.unique (
+        lib.optional (cfg.stateDir != null) cfg.stateDir ++ lib.optional (catalogDir != null) catalogDir
+      );
 
       # camelCase -> `NAVISCOUT_UPPER_SNAKE` (ytdlpResolveCacheTtl ->
       # NAVISCOUT_YTDLP_RESOLVE_CACHE_TTL), the mapping naviscout's env expects.
@@ -158,6 +176,9 @@ mkDotsModule {
         }
         // lib.optionalAttrs (cfg.navidromeDataDir != null) {
           lastfmDbPath = "${cfg.navidromeDataDir}/navidrome.db";
+        }
+        // lib.optionalAttrs (cfg.catalogDb != null) {
+          inherit (cfg) catalogDb;
         }
         // cfg.settings
       );
@@ -241,7 +262,7 @@ mkDotsModule {
           ports = [ "127.0.0.1:${toString cfg.port}:${toString cfg.port}" ];
           volumes =
             cfg.volumes
-            ++ lib.optional (cfg.stateDir != null) "${cfg.stateDir}:${cfg.stateDir}"
+            ++ map (d: "${d}:${d}") dataDirs
             ++ lib.optional (cfg.navidromeDataDir != null) "${cfg.navidromeDataDir}:${cfg.navidromeDataDir}:ro";
         };
         inherit defaults;
@@ -254,10 +275,8 @@ mkDotsModule {
         };
       }
 
-      (lib.mkIf (cfg.stateDir != null) {
-        systemd.tmpfiles.rules = [
-          "d '${cfg.stateDir}' 0700 65532 65532 - -"
-        ];
+      (lib.mkIf (dataDirs != [ ]) {
+        systemd.tmpfiles.rules = map (d: "d '${d}' 0700 65532 65532 - -") dataDirs;
       })
 
       remap
