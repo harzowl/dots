@@ -115,6 +115,21 @@ mkDotsModule {
         '';
       };
 
+      catalogExcludeReleaseTypes = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ "bootleg" ];
+        description = ''
+          Release types naviscout never serves or stores, matched
+          case-insensitively against an album's types — its primary type, every
+          secondary type and a non-official release status. An excluded album,
+          its release groups and its tracks are filtered from every surface and
+          dropped from the durable store. Bootlegs are excluded by default: a
+          bootleg release group is a primary `Album` whose releases carry the
+          `Bootleg` status, so it would otherwise read as an ordinary album and
+          pad an artist's discography. Set to `[ ]` to keep every type.
+        '';
+      };
+
       secretEnv = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = { };
@@ -184,6 +199,9 @@ mkDotsModule {
         }
         // lib.optionalAttrs (cfg.catalogDb != null) {
           inherit (cfg) catalogDb;
+        }
+        // {
+          inherit (cfg) catalogExcludeReleaseTypes;
         }
         // cfg.settings
       );
