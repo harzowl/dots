@@ -159,12 +159,13 @@ mkDotsModule {
 
       genreDisplayExceptions = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ "aor=AOR" ];
+        default = [ ];
         description = ''
           `canonical=display` overrides, matched case-insensitively, for
           acronyms and written forms that are not the mode's output. An
           exception is the last word: it wins over the per-genre and default
-          modes in every mode.
+          modes in every mode. Empty by default: which forms a deployment
+          needs is its data, so the consuming host sets them.
         '';
       };
 
