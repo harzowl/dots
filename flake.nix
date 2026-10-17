@@ -124,6 +124,22 @@
               bash ${self}/tests/personal-data/run.sh
               touch "$out"
             '';
+
+        # The mirrored account's email table: a realm address is kept as-is, a
+        # bare username gets the configured domain, and anything else yields no
+        # email rather than an invented one.
+        navidrome-sync =
+          let
+            pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+          in
+          pkgs.runCommand "navidrome-sync"
+            {
+              nativeBuildInputs = [ pkgs.bash ];
+            }
+            ''
+              bash ${self}/tests/navidrome-sync/run.sh
+              touch "$out"
+            '';
       };
     };
 }

@@ -153,6 +153,16 @@ mkDotsModule {
                   type = lib.types.str;
                   description = "Key in `clientSecretFile` holding the secret.";
                 };
+                emailDomain = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  description = ''
+                    Domain to append to a bare username (one with no `@`) when
+                    the realm user has no email. Null invents nothing: an
+                    account that cannot yield a valid address is created
+                    without an email.
+                  '';
+                };
               };
             }
           );
@@ -170,8 +180,38 @@ mkDotsModule {
   toConfig =
     args: cfg:
     let
-      inherit (args) lib;
+      inherit (args) lib pkgs;
       pluginsDir = "${cfg.dataDir}/plugins";
+
+      syncUsers =
+        if cfg.admin.sync == null then
+          null
+        else
+          pkgs.writeShellScript "navidrome-sync-users" (
+            builtins.readFile ./derive-email.sh
+            + "\n"
+            +
+              lib.replaceStrings
+                [
+                  "@CONTAINER@"
+                  "@KEYCLOAK_URL@"
+                  "@REALM@"
+                  "@CLIENT_ID@"
+                  "@SECRET_FILE@"
+                  "@SECRET_KEY@"
+                  "@EMAIL_DOMAIN@"
+                ]
+                [
+                  cfg.name
+                  cfg.admin.sync.url
+                  cfg.admin.sync.realm
+                  cfg.admin.sync.clientId
+                  (toString cfg.admin.sync.clientSecretFile)
+                  cfg.admin.sync.clientSecretKey
+                  (if cfg.admin.sync.emailDomain != null then cfg.admin.sync.emailDomain else "")
+                ]
+                (builtins.readFile ./sync-users.sh)
+          );
 
       envValue =
         v:
@@ -237,6 +277,7 @@ mkDotsModule {
                 util-linux
                 coreutils
                 gnugrep
+                gnused
               ]
               ++ lib.optionals (cfg.admin.sync != null) [
                 curl
@@ -274,30 +315,8 @@ mkDotsModule {
                 fi
               '') cfg.admin.ensureUsers}
               ${lib.optionalString (cfg.admin.sync != null) ''
-                # Mirror the realm's users through a read-only service account:
-                # ExtAuth on /rest does not auto-provision, so create what is missing.
-                synccfg="$(mktemp)"
-                chmod 600 "$synccfg"
-                sed -n 's/^${cfg.admin.sync.clientSecretKey}=//p' ${toString cfg.admin.sync.clientSecretFile} | tr -d '\n' > "$synccfg"
-                token="$(curl -fsS -X POST "${cfg.admin.sync.url}/realms/${cfg.admin.sync.realm}/protocol/openid-connect/token" \
-                  -d grant_type=client_credentials -d client_id=${cfg.admin.sync.clientId} \
-                  --data-urlencode "client_secret@$synccfg" 2>/dev/null | jq -r '.access_token // empty')"
-                rm -f "$synccfg"
-                if [ -n "$token" ]; then
-                  existing="$(docker exec ${cfg.name} /app/navidrome user list -n 2>/dev/null | cut -d, -f2)"
-                  for u in $(curl -fsS -H "Authorization: Bearer $token" \
-                    "${cfg.admin.sync.url}/admin/realms/${cfg.admin.sync.realm}/users?max=5000&briefRepresentation=true" 2>/dev/null \
-                    | jq -r '.[].username'); do
-                    printf '%s\n' "$existing" | grep -qx "$u" && continue
-                    pw="$(head -c 24 /dev/urandom | base64)"
-                    printf '%s\n%s\n' "$pw" "$pw" | script -qec \
-                      "docker exec -it ${cfg.name} /app/navidrome user create --username '$u' -n" /dev/null >/dev/null 2>&1 \
-                      && echo "created Navidrome user '$u' (from Keycloak)" \
-                      || echo "warning: could not create Navidrome user '$u'"
-                  done
-                else
-                  echo "warning: could not read the realm user list"
-                fi
+                # ExtAuth on /rest does not auto-provision; create what is missing.
+                ${syncUsers} || echo "warning: could not mirror the realm's users"
               ''}
               ${lib.concatMapStrings (u: ''
                 docker exec ${cfg.name} /app/navidrome user edit --user '${u}' --set-admin -n >/dev/null 2>&1 || true
