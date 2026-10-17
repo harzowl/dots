@@ -169,6 +169,17 @@ mkDotsModule {
         '';
       };
 
+      genreDisplayMinorWords = lib.mkOption {
+        type = lib.types.nullOr (lib.types.listOf lib.types.str);
+        default = null;
+        description = ''
+          Words that `title` mode keeps lowercase unless they begin or end the
+          label (`drum and bass` → `Drum and Bass`, while `The Fall` keeps its
+          first `The`). A deployment that wants a different list sets it here;
+          when null naviscout's own default list applies.
+        '';
+      };
+
       maxTagLength = lib.mkOption {
         type = lib.types.nullOr lib.types.ints.positive;
         default = null;
@@ -262,6 +273,9 @@ mkDotsModule {
         }
         // lib.optionalAttrs (cfg.maxTagLength != null) {
           inherit (cfg) maxTagLength;
+        }
+        // lib.optionalAttrs (cfg.genreDisplayMinorWords != null) {
+          inherit (cfg) genreDisplayMinorWords;
         }
         // cfg.settings
       );
