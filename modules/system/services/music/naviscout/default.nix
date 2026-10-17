@@ -180,6 +180,19 @@ mkDotsModule {
         '';
       };
 
+      genreDisplayWordSubstitutions = lib.mkOption {
+        type = lib.types.nullOr (lib.types.listOf lib.types.str);
+        default = null;
+        description = ''
+          `word=display` substitutions applied to whole words in a genre label,
+          matched case-insensitively wherever they sit (`uk garage` → `UK Garage`,
+          `garage uk` → `Garage UK`, `post-uk` → `Post-UK`, `uk/garage` →
+          `UK/Garage`) while a substring such as `ukraine` is untouched. The list
+          applies in every display mode. When null naviscout's own default
+          (`uk=UK`) applies.
+        '';
+      };
+
       maxTagLength = lib.mkOption {
         type = lib.types.nullOr lib.types.ints.positive;
         default = null;
@@ -294,6 +307,9 @@ mkDotsModule {
         }
         // lib.optionalAttrs (cfg.genreDisplayMinorWords != null) {
           inherit (cfg) genreDisplayMinorWords;
+        }
+        // lib.optionalAttrs (cfg.genreDisplayWordSubstitutions != null) {
+          inherit (cfg) genreDisplayWordSubstitutions;
         }
         // cfg.settings
       );
