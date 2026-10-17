@@ -109,8 +109,11 @@ in
             # Keycloak is the only identity source and an account may have no
             # email at all (or an unverified, foreign one). The gate authorizes
             # the authenticated Keycloak user, not the email claim, so don't
-            # reject an id_token whose email is absent/unverified.
+            # reject an id_token whose email is absent/unverified. The username
+            # stands in for the email claim because oauth2-proxy insists on one
+            # to build a session; the mirror uses the real email field separately.
             oauth2ProxyInsecureOidcAllowUnverifiedEmail = true;
+            oauth2ProxyOidcEmailClaim = "preferred_username";
             oauth2ProxyReverseProxy = true;
             oauth2ProxySetXauthrequest = true;
             oauth2ProxyWhitelistDomains = ".${config.dots.system.core.domain}";
