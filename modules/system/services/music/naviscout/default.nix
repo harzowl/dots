@@ -138,7 +138,7 @@ mkDotsModule {
         ];
         default = "title";
         description = ''
-          How genre and mood names are displayed: `title` capitalises every
+          Default display mode for genre and mood names: `title` capitalises every
           word (`post-punk` → `Post-Punk`), `sentence` only the first word
           (`post-punk` → `Post-punk`), and `none` keeps the catalogue's
           spelling. Display never changes identity: dedup, counts, filters and
@@ -146,16 +146,25 @@ mkDotsModule {
         '';
       };
 
+      genreDisplayGenreModes = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ "poezja śpiewana=sentence" ];
+        description = ''
+          `canonical=mode` assignments giving one genre the mode of its
+          language. They are declared configuration, not inferred: MusicBrainz
+          associates no locale with a tag, so a genre not listed here falls back
+          to `genreDisplayMode`.
+        '';
+      };
+
       genreDisplayExceptions = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [
-          "aor=AOR"
-          "poezja śpiewana=Poezja śpiewana"
-        ];
+        default = [ "aor=AOR" ];
         description = ''
           `canonical=display` overrides, matched case-insensitively, for
-          acronyms and names whose written form is not title case. An exception
-          wins over `genreDisplayMode` in every mode.
+          acronyms and written forms that are not the mode's output. An
+          exception is the last word: it wins over the per-genre and default
+          modes in every mode.
         '';
       };
 
@@ -230,7 +239,12 @@ mkDotsModule {
           inherit (cfg) catalogDb;
         }
         // {
-          inherit (cfg) catalogExcludeReleaseTypes genreDisplayMode genreDisplayExceptions;
+          inherit (cfg)
+            catalogExcludeReleaseTypes
+            genreDisplayMode
+            genreDisplayGenreModes
+            genreDisplayExceptions
+            ;
         }
         // cfg.settings
       );
