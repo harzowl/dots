@@ -106,6 +106,11 @@ in
             oauth2ProxyProvider = "keycloak-oidc";
             oauth2ProxyOidcIssuerUrl = "https://auth.${config.dots.system.core.domain}/realms/${config.dots.system.core.realm}";
             oauth2ProxyEmailDomains = "*";
+            # Keycloak is the only identity source and an account may have no
+            # email at all (or an unverified, foreign one). The gate authorizes
+            # the authenticated Keycloak user, not the email claim, so don't
+            # reject an id_token whose email is absent/unverified.
+            oauth2ProxyInsecureOidcAllowUnverifiedEmail = true;
             oauth2ProxyReverseProxy = true;
             oauth2ProxySetXauthrequest = true;
             oauth2ProxyWhitelistDomains = ".${config.dots.system.core.domain}";
