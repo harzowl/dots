@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Mirror every realm user into a local Navidrome account.
 #
 # ExtAuth on /rest does not auto-provision, so an account must exist before a
