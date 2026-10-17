@@ -130,6 +130,35 @@ mkDotsModule {
         '';
       };
 
+      genreDisplayMode = lib.mkOption {
+        type = lib.types.enum [
+          "title"
+          "sentence"
+          "none"
+        ];
+        default = "title";
+        description = ''
+          How genre and mood names are displayed: `title` capitalises every
+          word (`post-punk` → `Post-Punk`), `sentence` only the first word
+          (`post-punk` → `Post-punk`), and `none` keeps the catalogue's
+          spelling. Display never changes identity: dedup, counts, filters and
+          merges use the folded canonical name.
+        '';
+      };
+
+      genreDisplayExceptions = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "aor=AOR"
+          "poezja śpiewana=Poezja śpiewana"
+        ];
+        description = ''
+          `canonical=display` overrides, matched case-insensitively, for
+          acronyms and names whose written form is not title case. An exception
+          wins over `genreDisplayMode` in every mode.
+        '';
+      };
+
       secretEnv = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = { };
@@ -201,7 +230,7 @@ mkDotsModule {
           inherit (cfg) catalogDb;
         }
         // {
-          inherit (cfg) catalogExcludeReleaseTypes;
+          inherit (cfg) catalogExcludeReleaseTypes genreDisplayMode genreDisplayExceptions;
         }
         // cfg.settings
       );
