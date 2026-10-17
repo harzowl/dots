@@ -167,9 +167,9 @@ mkDotsModule {
 
       smtp = realm.smtpServer or { };
 
-      # The realm's display name (login page) and mail sender names are realm
-      # fields, not part of the client/role partial import, so the reconcile
-      # applies them with a plain `kcadm update realms/<realm>`.
+      # The realm's display name, mail sender names, account theme and login
+      # rule are realm fields, not part of the client/role partial import, so the
+      # reconcile applies them with a plain `kcadm update realms/<realm>`.
       realmUpdate =
         let
           displayFlag = lib.optionalString (
@@ -184,10 +184,16 @@ mkDotsModule {
           accountThemeFlag = lib.optionalString (
             (realm.accountTheme or null) != null
           ) "-s 'accountTheme=${realm.accountTheme}' ";
+          # A realm field too: without this update an existing realm keeps
+          # whatever it was first imported with, so a login could stay forced to
+          # an email address after the declaration changes.
+          emailAsUsernameFlag = lib.optionalString (
+            (realm.registrationEmailAsUsername or null) != null
+          ) "-s 'registrationEmailAsUsername=${lib.boolToString realm.registrationEmailAsUsername}' ";
         in
-        lib.optionalString (
-          displayFlag != "" || smtpFlags != "" || accountThemeFlag != ""
-        ) "kcadm update \"realms/\${REALM}\" ${displayFlag}${smtpFlags}${accountThemeFlag}|| true";
+        lib.optionalString
+          (displayFlag != "" || smtpFlags != "" || accountThemeFlag != "" || emailAsUsernameFlag != "")
+          "kcadm update \"realms/\${REALM}\" ${displayFlag}${smtpFlags}${accountThemeFlag}${emailAsUsernameFlag}|| true";
 
       reconcile =
         lib.replaceStrings
