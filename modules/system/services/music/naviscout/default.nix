@@ -169,6 +169,19 @@ mkDotsModule {
         '';
       };
 
+      maxTagLength = lib.mkOption {
+        type = lib.types.nullOr lib.types.ints.positive;
+        default = null;
+        description = ''
+          Maximum length, in characters, of a MusicBrainz tag stored or served
+          as a genre or mood. A longer tag is dropped when a classification is
+          filed and when a durable entry is loaded, so an existing store serves
+          the filtered set without a purge, and it appears on no surface or
+          count. When null naviscout's own default applies; a deployment that
+          needs a different bound sets it here.
+        '';
+      };
+
       secretEnv = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = { };
@@ -246,6 +259,9 @@ mkDotsModule {
             genreDisplayGenreModes
             genreDisplayExceptions
             ;
+        }
+        // lib.optionalAttrs (cfg.maxTagLength != null) {
+          inherit (cfg) maxTagLength;
         }
         // cfg.settings
       );
