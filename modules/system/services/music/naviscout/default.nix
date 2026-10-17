@@ -193,6 +193,23 @@ mkDotsModule {
         '';
       };
 
+      lidarrMonitor = lib.mkOption {
+        type = lib.types.enum [
+          "album"
+          "artist"
+        ];
+        default = "album";
+        description = ''
+          What a newly acquired artist's monitoring covers. `album` monitors
+          only the album a client requested. `artist` adds the artist with
+          whole-discography monitoring, leaving which release types are
+          actually monitored to the artist's metadata profile — an
+          albums-only profile yields albums only, with no singles or EPs.
+          Neither mode passes a different profile or changes the configured
+          one.
+        '';
+      };
+
       secretEnv = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = { };
@@ -269,6 +286,7 @@ mkDotsModule {
             genreDisplayMode
             genreDisplayGenreModes
             genreDisplayExceptions
+            lidarrMonitor
             ;
         }
         // lib.optionalAttrs (cfg.maxTagLength != null) {
