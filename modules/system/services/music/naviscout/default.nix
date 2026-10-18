@@ -14,11 +14,12 @@
 # collections (`album`, `artist`, `song`) to extend.
 #
 # Streaming a catalogue (phantom) track shells out to `yt-dlp`, which needs
-# `ffmpeg` and a CA trust store, so the binary is wrapped in a Nix-built OCI
-# image the host loads (`package` has no default: the consumer passes its own
-# build), rather than run from a stock base image. The container joins a
-# user-defined network and is reached by the front ends on its container IP; it
-# is published loopback-only so nothing off-host reaches it.
+# `ffmpeg` and a CA trust store. The consumer passes naviscout's own flake
+# package (`packages.<system>.default`), whose wrapper already puts `yt-dlp`,
+# `ffmpeg` and `sqlite` on `PATH`; this module only wraps that package in the
+# OCI image the host loads, rather than duplicating the runtime packaging. The
+# container joins a user-defined network and is reached by the front ends on its
+# container IP; it is published loopback-only so nothing off-host reaches it.
 #
 # A phantom play can be scrobbled to Last.fm as the user who played it, using
 # the per-user session key Navidrome already stores rather than a second login:
@@ -75,8 +76,10 @@ mkDotsModule {
       package = lib.mkOption {
         type = lib.types.package;
         description = ''
-          The naviscout binary to run. There is no default: the consumer passes
-          its own build, so this module does not depend on the naviscout flake.
+          The naviscout package to run, typically the flake's
+          `packages.<system>.default`. Its wrapper supplies the runtime tools
+          (`yt-dlp`, `ffmpeg`, `sqlite`). There is no default: the consumer
+          passes it, so this module does not depend on the naviscout flake.
         '';
       };
 
@@ -448,14 +451,11 @@ mkDotsModule {
       containerImage = pkgs.dockerTools.buildLayeredImage {
         inherit (cfg) name;
         tag = imageTag;
-        # The runtime needs yt-dlp to resolve phantom tracks, sqlite3 to read
-        # Navidrome's database for scrobbling, and a trust store for every
-        # outbound TLS call.
+        # The package's wrapper already puts yt-dlp, ffmpeg and sqlite on PATH;
+        # only the CA bundle for outbound TLS calls is added here.
         contents = [
+          cfg.package
           pkgs.cacert
-          pkgs.sqlite
-          pkgs.yt-dlp
-          pkgs.ffmpeg
         ];
         # yt-dlp wants a writable temp dir.
         extraCommands = ''
@@ -468,6 +468,10 @@ mkDotsModule {
           # Match the project's image: a non-root uid, shared with the cache dir
           # (see the tmpfiles rule below).
           User = "65532:65532";
+          Labels = {
+            "org.opencontainers.image.title" = "naviscout";
+            "org.opencontainers.image.version" = cfg.package.version or "unknown";
+          };
           Env = [
             "PATH=/bin"
             "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
