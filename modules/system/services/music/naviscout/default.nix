@@ -30,7 +30,8 @@
 # become `NAVISCOUT_UPSTREAM_URL` / `NAVISCOUT_LISTEN`. Secrets (the Last.fm and
 # Lidarr API keys) never enter `settings`: they arrive in a dotenv via
 # `environmentFiles`, and `secretEnv` re-emits them under the `NAVISCOUT_*` name
-# naviscout reads.
+# naviscout reads. The optional ListenBrainz token for LB Radio follows the same
+# path (`NAVISCOUT_LISTENBRAINZ_TOKEN`); without it radio stays off.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
@@ -272,6 +273,41 @@ mkDotsModule {
         description = "How long a station snapshot is served before it is rebuilt.";
       };
 
+      stationSources = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.enum [
+            "lastfm"
+            "listenbrainz"
+            "listenbrainz_radio"
+          ]
+        );
+        default = [
+          "lastfm"
+          "listenbrainz"
+        ];
+        description = ''
+          Candidate feeds a station may draw from. `listenbrainz` adds similar
+          recordings by exact recording MBID and needs no token;
+          `listenbrainz_radio` adds LB Radio artist/tag prompts and is used only
+          when a ListenBrainz token is supplied through `secretEnv`. Removing a
+          source leaves the other sources' candidates unchanged.
+        '';
+      };
+
+      stationSourceTimeouts = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "lastfm=6s"
+          "listenbrainz=3s"
+          "listenbrainz_radio=4s"
+        ];
+        description = ''
+          `source=duration` bounds, one per candidate source. A source that
+          outlives its bound is skipped and the other sources still build the
+          station.
+        '';
+      };
+
       lidarrMonitor = lib.mkOption {
         type = lib.types.enum [
           "album"
@@ -372,6 +408,8 @@ mkDotsModule {
             stationPinned
             stationSize
             stationTTL
+            stationSources
+            stationSourceTimeouts
             ;
         }
         // lib.optionalAttrs (cfg.maxTagLength != null) {
