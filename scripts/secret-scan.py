@@ -110,6 +110,13 @@ def non_example_email(line: str) -> str | None:
 # A long run of base64/base64url characters (padding allowed).
 TOKEN = re.compile(r"[A-Za-z0-9_+/=-]{40,}")
 
+# Exact identifiers that are long, mixed-case and contain a digit but are Nix
+# option names, not credentials. Keep this list literal: a wildcard here would
+# weaken the token-shape rule for every other token.
+ALLOW_TOKENS = {
+    "oauth2ProxyInsecureOidcAllowUnverifiedEmail",
+}
+
 # Literal credential formats that are unambiguous regardless of entropy.
 PREFIXES = re.compile(
     r"AGE-SECRET-KEY-1[0-9A-Z]{20,}|"
@@ -180,7 +187,10 @@ def scan_file(path: str) -> list[tuple[int, str]]:
             findings.append((number, "literal credential prefix"))
             continue
         for match in TOKEN.finditer(line):
-            if looks_like_credential(match.group(0)):
+            token = match.group(0)
+            if token in ALLOW_TOKENS:
+                continue
+            if looks_like_credential(token):
                 findings.append((number, "high-entropy token"))
                 break
     return findings
