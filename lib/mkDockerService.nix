@@ -269,15 +269,7 @@
       settings = (defaults.settings or { }) // spec.settings;
 
       # camelCase -> UPPER_SNAKE (someKey -> SOME_KEY, maxPlayers -> MAX_PLAYERS).
-      envKey =
-        k:
-        lib.toUpper (
-          lib.removePrefix "_" (
-            lib.concatMapStrings (c: if c != lib.toLower c then "_" + lib.toLower c else c) (
-              lib.stringToCharacters k
-            )
-          )
-        );
+      envKey = import ./camelToUpperSnake.nix { inherit lib; };
 
       # Values -> env strings (bool/number/string/list).
       envValue =

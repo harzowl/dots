@@ -344,6 +344,7 @@ mkDotsModule {
     args: cfg:
     let
       inherit (args) lib pkgs;
+      camelToUpperSnake = import ../../../../../lib/camelToUpperSnake.nix { inherit lib; };
 
       # The directories naviscout persists into (the playback and cover caches,
       # and the catalogue database), each mounted at the same path and created
@@ -353,16 +354,8 @@ mkDotsModule {
         lib.optional (cfg.stateDir != null) cfg.stateDir ++ lib.optional (catalogDir != null) catalogDir
       );
 
-      # camelCase -> `NAVISCOUT_UPPER_SNAKE` (ytdlpResolveCacheTtl ->
-      # NAVISCOUT_YTDLP_RESOLVE_CACHE_TTL), the mapping naviscout's env expects.
-      envKey =
-        k:
-        "NAVISCOUT_"
-        + lib.toUpper (
-          lib.concatMapStrings (c: if c != lib.toLower c then "_" + lib.toLower c else c) (
-            lib.stringToCharacters k
-          )
-        );
+      # camelCase -> `NAVISCOUT_UPPER_SNAKE` (stationTTL -> NAVISCOUT_STATION_TTL).
+      envKey = k: "NAVISCOUT_" + camelToUpperSnake k;
 
       envValue =
         v:

@@ -125,6 +125,59 @@
               touch "$out"
             '';
 
+        # The camelCase -> UPPER_SNAKE mapping must keep initialisms together:
+        # `stationTTL` is NAVISCOUT_STATION_TTL, the name naviscout's docs and
+        # settings use, not NAVISCOUT_STATION_T_T_L. These cases are the
+        # documented names of the naviscout keys the module derives.
+        env-keys =
+          let
+            pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+            toEnvKey = import ./lib/camelToUpperSnake.nix { inherit (pkgs) lib; };
+            cases = {
+              listen = "LISTEN";
+              upstreamUrl = "UPSTREAM_URL";
+              cacheDir = "CACHE_DIR";
+              cacheEnabled = "CACHE_ENABLED";
+              coverCacheDir = "COVER_CACHE_DIR";
+              lastfmDbPath = "LASTFM_DB_PATH";
+              catalogDb = "CATALOG_DB";
+              catalogExcludeReleaseTypes = "CATALOG_EXCLUDE_RELEASE_TYPES";
+              genreDisplayMode = "GENRE_DISPLAY_MODE";
+              genreDisplayGenreModes = "GENRE_DISPLAY_GENRE_MODES";
+              genreDisplayExceptions = "GENRE_DISPLAY_EXCEPTIONS";
+              genreDisplayMinorWords = "GENRE_DISPLAY_MINOR_WORDS";
+              genreDisplayWordSubstitutions = "GENRE_DISPLAY_WORD_SUBSTITUTIONS";
+              lidarrMonitor = "LIDARR_MONITOR";
+              ytdlpSourceOrder = "YTDLP_SOURCE_ORDER";
+              ytdlpSourceTimeouts = "YTDLP_SOURCE_TIMEOUTS";
+              stationsEnabled = "STATIONS_ENABLED";
+              stationPinned = "STATION_PINNED";
+              stationSize = "STATION_SIZE";
+              stationTTL = "STATION_TTL";
+              stationSources = "STATION_SOURCES";
+              stationSourceTimeouts = "STATION_SOURCE_TIMEOUTS";
+              maxTagLength = "MAX_TAG_LENGTH";
+              musicbrainzUa = "MUSICBRAINZ_UA";
+              stationStreamTTL = "STATION_STREAM_TTL";
+              ytdlpResolveCacheTtl = "YTDLP_RESOLVE_CACHE_TTL";
+              oauth2ProxyClientId = "OAUTH2_PROXY_CLIENT_ID";
+              maxPlayers = "MAX_PLAYERS";
+              apiClient = "API_CLIENT";
+            };
+          in
+          pkgs.runCommand "env-keys" { } ''
+            ${pkgs.lib.concatStringsSep "\n" (
+              pkgs.lib.mapAttrsToList (name: want: ''
+                got='${toEnvKey name}'
+                if [ "$got" != '${want}' ]; then
+                  echo "env key for ${name} = $got, want ${want}" >&2
+                  exit 1
+                fi
+              '') cases
+            )}
+            touch "$out"
+          '';
+
         # The mirrored account's email table: a realm address is kept as-is, a
         # bare username gets the configured domain, and anything else yields no
         # email rather than an invented one.

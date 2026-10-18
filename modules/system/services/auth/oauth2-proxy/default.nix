@@ -26,6 +26,7 @@
 }:
 let
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
+  camelToUpperSnake = import ../../../../../lib/camelToUpperSnake.nix { inherit lib; };
 
   defaults = {
     image = "quay.io/oauth2-proxy/oauth2-proxy:latest";
@@ -47,15 +48,7 @@ let
   };
 
   # camelCase -> UPPER_SNAKE (oauth2ProxyClientId -> OAUTH2_PROXY_CLIENT_ID).
-  envKey =
-    k:
-    lib.toUpper (
-      lib.removePrefix "_" (
-        lib.concatMapStrings (c: if c != lib.toLower c then "_" + lib.toLower c else c) (
-          lib.stringToCharacters k
-        )
-      )
-    );
+  envKey = camelToUpperSnake;
 
   envValue =
     v:
