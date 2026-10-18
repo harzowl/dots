@@ -228,6 +228,21 @@ mkDotsModule {
         '';
       };
 
+      ytdlpCookies = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Host path to a Netscape-format cookies file passed to yt-dlp as
+          `--cookies`, so an age-gated YouTube source can resolve with the
+          host's own authenticated session. The file is a credential: it stays
+          on the host and is never copied into the Nix store, and only its path
+          is configured — never its contents. A location outside the service's
+          state directory is mounted read-only. A missing or unreadable file is
+          logged at WARN and treated as off, so playback stays anonymous. Null
+          (the default) reads no session.
+        '';
+      };
+
       ytdlpSourceTimeouts = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [
@@ -354,6 +369,15 @@ mkDotsModule {
         lib.optional (cfg.stateDir != null) cfg.stateDir ++ lib.optional (catalogDir != null) catalogDir
       );
 
+      # The cookies file is a credential, so only its path is configured and it
+      # is mounted read-only. A directory already mounted for state needs no
+      # second mount; for any other location the parent is mounted so Docker
+      # does not create the file path itself as a directory.
+      cookieDir = if cfg.ytdlpCookies != null then builtins.dirOf cfg.ytdlpCookies else null;
+      cookieVolume = lib.optional (
+        cookieDir != null && !lib.any (d: cookieDir == d || lib.hasPrefix "${d}/" cookieDir) dataDirs
+      ) "${cookieDir}:${cookieDir}:ro";
+
       # camelCase -> `NAVISCOUT_UPPER_SNAKE` (stationTTL -> NAVISCOUT_STATION_TTL).
       envKey = k: "NAVISCOUT_" + camelToUpperSnake k;
 
@@ -413,6 +437,9 @@ mkDotsModule {
         }
         // lib.optionalAttrs (cfg.genreDisplayWordSubstitutions != null) {
           inherit (cfg) genreDisplayWordSubstitutions;
+        }
+        // lib.optionalAttrs (cfg.ytdlpCookies != null) {
+          inherit (cfg) ytdlpCookies;
         }
         // cfg.settings
       );
@@ -498,6 +525,7 @@ mkDotsModule {
           volumes =
             cfg.volumes
             ++ map (d: "${d}:${d}") dataDirs
+            ++ cookieVolume
             ++ lib.optional (cfg.navidromeDataDir != null) "${cfg.navidromeDataDir}:${cfg.navidromeDataDir}:ro";
         };
         inherit defaults;
