@@ -206,6 +206,38 @@ mkDotsModule {
         '';
       };
 
+      stationsEnabled = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Serve per-listener dynamic playlists and radio stations through the
+          standard OpenSubsonic surfaces. Disabling it relays those methods to
+          the origin untouched.
+        '';
+      };
+
+      stationPinned = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = ''
+          Pinned stations, each `artist:<mbid>`, `genre:<name>` or
+          `track:<mbid>`. A pinned station is built from its seed and listed
+          with the implicit ones.
+        '';
+      };
+
+      stationSize = lib.mkOption {
+        type = lib.types.ints.between 10 100;
+        default = 50;
+        description = "Tracks in one station snapshot.";
+      };
+
+      stationTTL = lib.mkOption {
+        type = lib.types.str;
+        default = "12h";
+        description = "How long a station snapshot is served before it is rebuilt.";
+      };
+
       lidarrMonitor = lib.mkOption {
         type = lib.types.enum [
           "album"
@@ -300,6 +332,10 @@ mkDotsModule {
             genreDisplayGenreModes
             genreDisplayExceptions
             lidarrMonitor
+            stationsEnabled
+            stationPinned
+            stationSize
+            stationTTL
             ;
         }
         // lib.optionalAttrs (cfg.maxTagLength != null) {
@@ -325,6 +361,7 @@ mkDotsModule {
           pkgs.cacert
           pkgs.sqlite
           pkgs.yt-dlp
+          pkgs.ffmpeg
         ];
         # yt-dlp wants a writable temp dir.
         extraCommands = ''
