@@ -1,49 +1,20 @@
-# naviscout — a discovery proxy that sits directly in front of Navidrome.
+# naviscout — a catalogue discovery proxy that sits directly in front of
+# Navidrome.
 #
-# It answers the Subsonic surface and adds catalogue discovery (MusicBrainz,
-# Last.fm) plus Lidarr handoff, relaying everything else to `upstream` (the
-# Navidrome base URL) unchanged. The music front ends — the oauth2-proxy gate
-# and the subsonic-auth shim — point at naviscout instead of Navidrome:
+# The native unit, its sandbox and the typed upstream/data/cache options live in
+# naviscout's own flake module (`nixosModules.default`), which the consuming
+# flake passes in as the `naviscout` special argument. This module only composes
+# that module: it forwards the small set of decisions a host actually makes and
+# offers `extraEnv` for everything else, so naviscout's unit is not restated
+# here.
 #
-#   Navidrome  <-  naviscout  <-  { the navidrome gate, the subsonic-auth shim }
-#
-# With `settings.nativeEnabled = true` it fronts the *whole* host instead of only
-# `/rest`: every other path (the web UI, `/api`, `/share`, `/auth`) is relayed
-# verbatim, and Navidrome's native `/api` list responses gain catalogue entries,
-# so Navidrome's own web UI shows discovery. `settings.nativeEndpoints` picks the
-# collections (`album`, `artist`, `song`) to extend.
-#
-# Streaming a catalogue (phantom) track shells out to `yt-dlp`, which needs
-# `ffmpeg` and a CA trust store. The consumer passes naviscout's own flake
-# package (`packages.<system>.default`), whose wrapper already puts `yt-dlp`,
-# `ffmpeg` and `sqlite` on `PATH`; this module only wraps that package in the
-# OCI image the host loads, rather than duplicating the runtime packaging. The
-# container joins a user-defined network and is reached by the front ends on its
-# container IP; it is published loopback-only so nothing off-host reaches it.
-#
-# A phantom play can be scrobbled to Last.fm as the user who played it, using
-# the per-user session key Navidrome already stores rather than a second login:
-# `navidromeDataDir` mounts Navidrome's data directory read-only, and the
-# container reads `navidrome.db` with sqlite3 to resolve the key.
-#
-# Config is `NAVISCOUT_<UPPER_SNAKE>` env vars. Non-secret settings go through
-# `settings` (camelCase, mapped like navidrome's `ND_*`); `upstream` and `port`
-# become `NAVISCOUT_UPSTREAM_URL` / `NAVISCOUT_LISTEN`. Secrets (the Last.fm and
-# Lidarr API keys) never enter `settings`: they arrive in a dotenv via
-# `environmentFiles`, and `secretEnv` re-emits them under the `NAVISCOUT_*` name
-# naviscout reads. The optional ListenBrainz token for LB Radio follows the same
-# path (`NAVISCOUT_LISTENBRAINZ_TOKEN`); without it radio stays off.
+# Secrets never enter the Nix store. `secretEnv` maps a `NAVISCOUT_*` name to a
+# neutral key found in `environmentFiles`, and a oneshot unit writes the
+# prefixed dotenv systemd reads. The source files stay the consumer's.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
-  mkDockerService = import ../../../../../lib/mkDockerService.nix;
 
-  defaults = {
-    name = "naviscout";
-    image = "naviscout:latest";
-    # Loopback-only: the front ends reach it over the user-defined network, and
-    # `openFirewall = false` keeps it off the LAN and the mesh.
-    openFirewall = false;
-  };
+  serviceName = "naviscout";
 in
 mkDotsModule {
   optionPath = [
@@ -52,294 +23,99 @@ mkDotsModule {
     "music"
     "naviscout"
   ];
-  description = "naviscout discovery proxy in front of Navidrome (OCI container)";
+  description = "naviscout catalogue discovery proxy in front of Navidrome";
+
+  # naviscout's module declares `services.naviscout`; import it only when the
+  # consumer supplied the flake, so the rest of the tree still evaluates
+  # without it.
+  imports =
+    args:
+    args.lib.optional (args ? naviscout && args.naviscout != null) args.naviscout.nixosModules.default;
 
   options =
     { lib, ... }:
-    (mkDockerService.options { inherit lib defaults; })
-    // {
-      port = lib.mkOption {
-        type = lib.types.port;
-        default = 4533;
-        description = ''
-          Port naviscout listens on (its container port). The front ends reach
-          it on its container IP; pick a host port that does not collide with
-          Navidrome's own loopback publish.
-        '';
-      };
-
-      upstream = lib.mkOption {
+    let
+      # An option left at `null` keeps naviscout's own default; this module
+      # declares no host path or service value of its own.
+      inherited =
+        type: description:
+        lib.mkOption {
+          inherit type description;
+          default = null;
+        };
+    in
+    {
+      upstreamUrl = lib.mkOption {
         type = lib.types.str;
-        description = "Base URL of the upstream music server (Navidrome).";
+        description = "Base URL of the Subsonic/OpenSubsonic server naviscout augments.";
       };
 
-      package = lib.mkOption {
-        type = lib.types.package;
-        description = ''
-          The naviscout package to run, typically the flake's
-          `packages.<system>.default`. Its wrapper supplies the runtime tools
-          (`yt-dlp`, `ffmpeg`, `sqlite`). There is no default: the consumer
-          passes it, so this module does not depend on the naviscout flake.
-        '';
-      };
+      listen = inherited (lib.types.nullOr lib.types.str) ''
+        Address the server listens on (`host:port`). Null keeps naviscout's
+        default.
+      '';
 
-      stateDir = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = ''
-          Host directory for the playback cache and the cover-art byte cache,
-          mounted read-write at the same path: the playback cache is the
-          directory itself (`NAVISCOUT_CACHE_DIR`), the cover cache a `covers`
-          subdirectory (`NAVISCOUT_COVER_CACHE_DIR`). When null both are left
-          off and unmounted.
-        '';
-      };
+      dataDir = inherited (lib.types.nullOr lib.types.str) ''
+        Durable state directory (catalogue database and related stores). Null
+        keeps naviscout's default.
+      '';
 
-      navidromeDataDir = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = ''
-          Host directory holding Navidrome's SQLite database, mounted read-only
-          at the same path so naviscout can resolve a user's linked Last.fm
-          session key for scrobbling (`NAVISCOUT_LASTFM_DB_PATH` points at
-          `<navidromeDataDir>/navidrome.db`). When null, scrobbling has no
-          session-key source and is left off.
-        '';
-      };
+      cacheDir = inherited (lib.types.nullOr lib.types.str) ''
+        Regenerable state directory (cover and playback caches). Null keeps
+        naviscout's default.
+      '';
 
-      catalogDb = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = ''
-          Host path of the durable SQLite database, mounted read-write at the
-          same path and passed as `NAVISCOUT_CATALOG_DB`. It holds the catalogue
-          store and, in its own tables, the resolved-video store. Its directory
-          is created (0700, owned by the container uid) if it is not already
-          covered by `stateDir`. When null nothing is persisted.
-        '';
-      };
+      user = inherited (lib.types.nullOr lib.types.str) ''
+        Service user. Null keeps naviscout's default.
+      '';
 
-      catalogExcludeReleaseTypes = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ "bootleg" ];
-        description = ''
-          Release types naviscout never serves or stores, matched
-          case-insensitively against an album's types — its primary type, every
-          secondary type and a non-official release status. An excluded album,
-          its release groups and its tracks are filtered from every surface and
-          dropped from the durable store. Bootlegs are excluded by default: a
-          bootleg release group is a primary `Album` whose releases carry the
-          `Bootleg` status, so it would otherwise read as an ordinary album and
-          pad an artist's discography. Set to `[ ]` to keep every type.
-        '';
-      };
+      group = inherited (lib.types.nullOr lib.types.str) ''
+        Service group. Null keeps naviscout's default.
+      '';
 
-      genreDisplayMode = lib.mkOption {
-        type = lib.types.enum [
-          "title"
-          "sentence"
-          "none"
-        ];
-        default = "title";
-        description = ''
-          Default display mode for genre and mood names: `title` capitalises every
-          word (`post-punk` → `Post-Punk`), `sentence` only the first word
-          (`post-punk` → `Post-punk`), and `none` keeps the catalogue's
-          spelling. Display never changes identity: dedup, counts, filters and
-          merges use the folded canonical name.
-        '';
-      };
+      uid = inherited (lib.types.nullOr lib.types.int) ''
+        Fixed numeric UID for the static service user; null lets NixOS pick
+        one. Set this to keep a store migrated from an existing deployment
+        owned by its former uid.
+      '';
 
-      genreDisplayGenreModes = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ "poezja śpiewana=sentence" ];
-        description = ''
-          `canonical=mode` assignments giving one genre the mode of its
-          language. They are declared configuration, not inferred: MusicBrainz
-          associates no locale with a tag, so a genre not listed here falls back
-          to `genreDisplayMode`.
-        '';
-      };
+      gid = inherited (lib.types.nullOr lib.types.int) ''
+        Fixed numeric GID for the static service group; null lets NixOS pick
+        one.
+      '';
 
-      genreDisplayExceptions = lib.mkOption {
+      dynamicUser = inherited (lib.types.nullOr lib.types.bool) ''
+        Run under a systemd DynamicUser. Null keeps naviscout's default.
+      '';
+
+      restart = inherited (lib.types.nullOr lib.types.str) ''
+        systemd `Restart=` policy. Null keeps naviscout's default.
+      '';
+
+      restartSec = inherited (lib.types.nullOr lib.types.str) ''
+        Delay between restarts. Null keeps naviscout's default.
+      '';
+
+      openFirewall = inherited (lib.types.nullOr lib.types.bool) ''
+        Open the listening port in the host firewall. Null keeps naviscout's
+        default.
+      '';
+
+      environmentFiles = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
         description = ''
-          `canonical=display` overrides, matched case-insensitively, for
-          acronyms and written forms that are not the mode's output. An
-          exception is the last word: it wins over the per-genre and default
-          modes in every mode. Empty by default: which forms a deployment
-          needs is its data, so the consuming host sets them.
+          Dotenv files read by systemd before it drops privileges. This is the
+          home for credentials; they never enter the Nix store.
         '';
       };
 
-      genreDisplayMinorWords = lib.mkOption {
-        type = lib.types.nullOr (lib.types.listOf lib.types.str);
-        default = null;
+      credentials = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = { };
         description = ''
-          Words that `title` mode keeps lowercase unless they begin or end the
-          label (`drum and bass` → `Drum and Bass`, while `The Fall` keeps its
-          first `The`). A deployment that wants a different list sets it here;
-          when null naviscout's own default list applies.
-        '';
-      };
-
-      genreDisplayWordSubstitutions = lib.mkOption {
-        type = lib.types.nullOr (lib.types.listOf lib.types.str);
-        default = null;
-        description = ''
-          `word=display` substitutions applied to whole words in a genre label,
-          matched case-insensitively wherever they sit (`uk garage` → `UK Garage`,
-          `garage uk` → `Garage UK`, `post-uk` → `Post-UK`, `uk/garage` →
-          `UK/Garage`) while a substring such as `ukraine` is untouched. The list
-          applies in every display mode. When null naviscout's own default
-          (`uk=UK`) applies.
-        '';
-      };
-
-      maxTagLength = lib.mkOption {
-        type = lib.types.nullOr lib.types.ints.positive;
-        default = null;
-        description = ''
-          Maximum length, in characters, of a MusicBrainz tag stored or served
-          as a genre or mood. A longer tag is dropped when a classification is
-          filed and when a durable entry is loaded, so an existing store serves
-          the filtered set without a purge, and it appears on no surface or
-          count. When null naviscout's own default applies; a deployment that
-          needs a different bound sets it here.
-        '';
-      };
-
-      ytdlpSourceOrder = lib.mkOption {
-        type = lib.types.listOf (
-          lib.types.enum [
-            "soundcloud"
-            "bandcamp"
-            "internet_archive"
-          ]
-        );
-        default = [
-          "soundcloud"
-          "bandcamp"
-          "internet_archive"
-        ];
-        description = ''
-          Fallback sources tried, in order, only when YouTube or YouTube Music
-          has no playable candidate. YouTube is always tried first, and an
-          ambiguous YouTube pool is never overridden. An empty list disables the
-          chain.
-        '';
-      };
-
-      ytdlpCookies = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = ''
-          Host path to a Netscape-format cookies file passed to yt-dlp as
-          `--cookies`, so an age-gated YouTube source can resolve with the
-          host's own authenticated session. The file is a credential: it stays
-          on the host and is never copied into the Nix store, and only its path
-          is configured — never its contents. A location outside the service's
-          state directory is mounted read-only. A missing or unreadable file is
-          logged at WARN and treated as off, so playback stays anonymous. Null
-          (the default) reads no session.
-        '';
-      };
-
-      ytdlpSourceTimeouts = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [
-          "soundcloud=2.5s"
-          "bandcamp=2.5s"
-          "internet_archive=2.5s"
-        ];
-        description = ''
-          `source=duration` bounds, one per fallback source, covering its search
-          and its resolve. The whole identification keeps its own bound.
-        '';
-      };
-
-      stationsEnabled = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = ''
-          Serve per-listener dynamic playlists and radio stations through the
-          standard OpenSubsonic surfaces. Disabling it relays those methods to
-          the origin untouched.
-        '';
-      };
-
-      stationPinned = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ ];
-        description = ''
-          Pinned stations, each `artist:<mbid>`, `genre:<name>` or
-          `track:<mbid>`. A pinned station is built from its seed and listed
-          with the implicit ones.
-        '';
-      };
-
-      stationSize = lib.mkOption {
-        type = lib.types.ints.between 10 100;
-        default = 50;
-        description = "Tracks in one station snapshot.";
-      };
-
-      stationTTL = lib.mkOption {
-        type = lib.types.str;
-        default = "12h";
-        description = "How long a station snapshot is served before it is rebuilt.";
-      };
-
-      stationSources = lib.mkOption {
-        type = lib.types.listOf (
-          lib.types.enum [
-            "lastfm"
-            "listenbrainz"
-            "listenbrainz_radio"
-          ]
-        );
-        default = [
-          "lastfm"
-          "listenbrainz"
-        ];
-        description = ''
-          Candidate feeds a station may draw from. `listenbrainz` adds similar
-          recordings by exact recording MBID and needs no token;
-          `listenbrainz_radio` adds LB Radio artist/tag prompts and is used only
-          when a ListenBrainz token is supplied through `secretEnv`. Removing a
-          source leaves the other sources' candidates unchanged.
-        '';
-      };
-
-      stationSourceTimeouts = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [
-          "lastfm=6s"
-          "listenbrainz=3s"
-          "listenbrainz_radio=4s"
-        ];
-        description = ''
-          `source=duration` bounds, one per candidate source. A source that
-          outlives its bound is skipped and the other sources still build the
-          station.
-        '';
-      };
-
-      lidarrMonitor = lib.mkOption {
-        type = lib.types.enum [
-          "album"
-          "artist"
-        ];
-        default = "album";
-        description = ''
-          What a newly acquired artist's monitoring covers. `album` monitors
-          only the album a client requested. `artist` adds the artist with
-          whole-discography monitoring, leaving which release types are
-          actually monitored to the artist's metadata profile — an
-          albums-only profile yields albums only, with no singles or EPs.
-          Neither mode passes a different profile or changes the configured
-          one.
+          Files loaded with `LoadCredential=NAME:SOURCE`, for a consumer that
+          prefers systemd credentials over an environment file.
         '';
       };
 
@@ -350,10 +126,40 @@ mkDotsModule {
           NAVISCOUT_LIDARR_API_KEY = "LIDARR_API_KEY";
         };
         description = ''
-          Map a `NAVISCOUT_*` env var to a secret name looked up in the dotenv
-          files under `environmentFiles`. The values are re-emitted into a
-          runtime dotenv (`/run/<name>.env`) passed to the container, so a
-          secret never enters `settings` (the Nix store).
+          Map a `NAVISCOUT_*` env name to a neutral secret name looked up in
+          `environmentFiles`. The values are re-emitted into a runtime dotenv,
+          so a secret never enters `extraEnv` (the Nix store).
+        '';
+      };
+
+      extraEnv = lib.mkOption {
+        type = lib.types.attrsOf (
+          lib.types.oneOf [
+            lib.types.bool
+            lib.types.int
+            lib.types.float
+            lib.types.str
+            (lib.types.listOf (
+              lib.types.oneOf [
+                lib.types.int
+                lib.types.str
+              ]
+            ))
+          ]
+        );
+        default = { };
+        example = {
+          NAVISCOUT_NATIVE_ENABLED = true;
+          NAVISCOUT_YTDLP_SOURCE_ORDER = [
+            "soundcloud"
+            "bandcamp"
+          ];
+        };
+        description = ''
+          Generic `NAVISCOUT_*` settings, passed through as the service's
+          environment. Bools render as `true`/`false` and lists are
+          comma-joined. **Never put a secret here**: the Nix store is
+          world-readable; use `secretEnv` or `environmentFiles`.
         '';
       };
     };
@@ -362,126 +168,26 @@ mkDotsModule {
     args: cfg:
     let
       inherit (args) lib pkgs;
-      camelToUpperSnake = import ../../../../../lib/camelToUpperSnake.nix { inherit lib; };
 
-      # The directories naviscout persists into (the playback and cover caches,
-      # and the catalogue database), each mounted at the same path and created
-      # once.
-      catalogDir = if cfg.catalogDb != null then builtins.dirOf cfg.catalogDb else null;
-      dataDirs = lib.unique (
-        lib.optional (cfg.stateDir != null) cfg.stateDir ++ lib.optional (catalogDir != null) catalogDir
-      );
-
-      # The cookies file is a credential, so only its path is configured and it
-      # is mounted read-only. A directory already mounted for state needs no
-      # second mount; for any other location the parent is mounted so Docker
-      # does not create the file path itself as a directory.
-      cookieDir = if cfg.ytdlpCookies != null then builtins.dirOf cfg.ytdlpCookies else null;
-      cookieVolume = lib.optional (
-        cookieDir != null && !lib.any (d: cookieDir == d || lib.hasPrefix "${d}/" cookieDir) dataDirs
-      ) "${cookieDir}:${cookieDir}:ro";
-
-      # camelCase -> `NAVISCOUT_UPPER_SNAKE` (stationTTL -> NAVISCOUT_STATION_TTL).
-      envKey = k: "NAVISCOUT_" + camelToUpperSnake k;
+      secretEnvFile = "/run/${serviceName}.env";
+      remapEnabled = cfg.secretEnv != { };
 
       envValue =
-        v:
-        if lib.isBool v then
-          (if v then "true" else "false")
-        else if lib.isList v then
-          lib.concatStringsSep "," (map toString v)
+        value:
+        if lib.isBool value then
+          lib.boolToString value
+        else if lib.isList value then
+          lib.concatStringsSep "," (map toString value)
         else
-          toString v;
+          toString value;
 
-      # The secret dotenv the container also gets, and its remap ahead of the
-      # container (the RAW environmentFiles stay the lookup source).
-      secretEnvFile = "/run/${cfg.name}.env";
-      remapEnabled = cfg.secretEnv != { };
-      containerEnvFiles = cfg.environmentFiles ++ lib.optional remapEnabled secretEnvFile;
-
-      environment = lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) (
-        {
-          listen = ":${toString cfg.port}";
-          upstreamUrl = cfg.upstream;
-        }
-        // lib.optionalAttrs (cfg.stateDir != null) {
-          cacheDir = cfg.stateDir;
-          cacheEnabled = true;
-          coverCacheDir = "${cfg.stateDir}/covers";
-        }
-        // lib.optionalAttrs (cfg.navidromeDataDir != null) {
-          lastfmDbPath = "${cfg.navidromeDataDir}/navidrome.db";
-        }
-        // lib.optionalAttrs (cfg.catalogDb != null) {
-          inherit (cfg) catalogDb;
-        }
-        // {
-          inherit (cfg)
-            catalogExcludeReleaseTypes
-            genreDisplayMode
-            genreDisplayGenreModes
-            genreDisplayExceptions
-            lidarrMonitor
-            ytdlpSourceOrder
-            ytdlpSourceTimeouts
-            stationsEnabled
-            stationPinned
-            stationSize
-            stationTTL
-            stationSources
-            stationSourceTimeouts
-            ;
-        }
-        // lib.optionalAttrs (cfg.maxTagLength != null) {
-          inherit (cfg) maxTagLength;
-        }
-        // lib.optionalAttrs (cfg.genreDisplayMinorWords != null) {
-          inherit (cfg) genreDisplayMinorWords;
-        }
-        // lib.optionalAttrs (cfg.genreDisplayWordSubstitutions != null) {
-          inherit (cfg) genreDisplayWordSubstitutions;
-        }
-        // lib.optionalAttrs (cfg.ytdlpCookies != null) {
-          inherit (cfg) ytdlpCookies;
-        }
-        // cfg.settings
-      );
-
-      imageTag = "latest";
-      containerImage = pkgs.dockerTools.buildLayeredImage {
-        inherit (cfg) name;
-        tag = imageTag;
-        # The package's wrapper already puts yt-dlp, ffmpeg and sqlite on PATH;
-        # only the CA bundle for outbound TLS calls is added here.
-        contents = [
-          cfg.package
-          pkgs.cacert
-        ];
-        # yt-dlp wants a writable temp dir.
-        extraCommands = ''
-          mkdir -p tmp
-          chmod 1777 tmp
-        '';
-        config = {
-          Entrypoint = [ "${cfg.package}/bin/naviscout" ];
-          WorkingDir = "/";
-          # Match the project's image: a non-root uid, shared with the cache dir
-          # (see the tmpfiles rule below).
-          User = "65532:65532";
-          Labels = {
-            "org.opencontainers.image.title" = "naviscout";
-            "org.opencontainers.image.version" = cfg.package.version or "unknown";
-          };
-          Env = [
-            "PATH=/bin"
-            "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
-            "TMPDIR=/tmp"
-          ];
-          ExposedPorts = {
-            "${toString cfg.port}/tcp" = { };
-          };
+      # Forward an option only when the host set it, so naviscout's module keeps
+      # its own default otherwise.
+      whenSet =
+        name: value:
+        lib.optionalAttrs (value != null) {
+          ${name} = value;
         };
-      };
 
       remapScript = pkgs.writeShellScript "naviscout-secrets-env" (builtins.readFile ./secrets-env.sh);
       remapArgs = lib.concatMapStringsSep " " lib.escapeShellArg (
@@ -490,21 +196,61 @@ mkDotsModule {
         ++ [ "--" ]
         ++ lib.mapAttrsToList (env: secret: "${env}=${secret}") cfg.secretEnv
       );
-
-      # Map the neutral secrets to the `NAVISCOUT_*` names naviscout reads.
-      remap = lib.mkIf remapEnabled {
+    in
+    lib.mkMerge [
+      {
         assertions = [
           {
-            assertion = cfg.environmentFiles != [ ];
+            assertion = args ? naviscout;
+            message = "dots.system.services.music.naviscout needs the naviscout flake as a special argument.";
+          }
+          {
+            assertion = !remapEnabled || cfg.environmentFiles != [ ];
             message = "dots.system.services.music.naviscout.secretEnv needs environmentFiles to read the secrets from.";
+          }
+          {
+            assertion = (cfg.uid == null && cfg.gid == null) || cfg.dynamicUser == false;
+            message = "dots.system.services.music.naviscout.uid/gid need dynamicUser = false.";
           }
         ];
 
-        systemd.services."${cfg.name}-env" = {
+        services.naviscout = {
+          enable = true;
+          inherit (cfg) upstreamUrl credentials;
+          environmentFiles = cfg.environmentFiles ++ lib.optional remapEnabled secretEnvFile;
+          settings = lib.mapAttrs (_: envValue) cfg.extraEnv;
+        }
+        // whenSet "listen" cfg.listen
+        // whenSet "dataDir" cfg.dataDir
+        // whenSet "cacheDir" cfg.cacheDir
+        // whenSet "user" cfg.user
+        // whenSet "group" cfg.group
+        // whenSet "dynamicUser" cfg.dynamicUser
+        // whenSet "restart" cfg.restart
+        // whenSet "restartSec" cfg.restartSec
+        // whenSet "openFirewall" cfg.openFirewall;
+
+        users = {
+          users = lib.mkIf (cfg.user != null && cfg.uid != null) {
+            ${cfg.user}.uid = cfg.uid;
+          };
+          groups = lib.mkIf (cfg.group != null && cfg.gid != null) {
+            ${cfg.group}.gid = cfg.gid;
+          };
+        };
+
+        systemd.services.${serviceName} = lib.mkIf remapEnabled {
+          after = [ "${serviceName}-env.service" ];
+          wants = [ "${serviceName}-env.service" ];
+        };
+      }
+
+      (lib.mkIf remapEnabled {
+        systemd.services."${serviceName}-env" = {
           description = "Map the naviscout secrets into their NAVISCOUT_ env names";
           after = [ "secretspec.service" ];
           wants = [ "secretspec.service" ];
-          before = [ "docker-${cfg.name}.service" ];
+          before = [ "${serviceName}.service" ];
           partOf = [ "secretspec.service" ];
           wantedBy = [ "multi-user.target" ];
           path = [
@@ -517,35 +263,6 @@ mkDotsModule {
             ExecStart = "${remapScript} ${remapArgs}";
           };
         };
-      };
-    in
-    lib.mkMerge [
-      (mkDockerService.config {
-        spec = cfg // {
-          image = "${cfg.name}:${imageTag}";
-          settings = { };
-          environmentFiles = containerEnvFiles;
-          ports = [ "127.0.0.1:${toString cfg.port}:${toString cfg.port}" ];
-          volumes =
-            cfg.volumes
-            ++ map (d: "${d}:${d}") dataDirs
-            ++ cookieVolume
-            ++ lib.optional (cfg.navidromeDataDir != null) "${cfg.navidromeDataDir}:${cfg.navidromeDataDir}:ro";
-        };
-        inherit defaults;
-      } args)
-
-      {
-        virtualisation.oci-containers.containers.${cfg.name} = {
-          imageFile = containerImage;
-          inherit environment;
-        };
-      }
-
-      (lib.mkIf (dataDirs != [ ]) {
-        systemd.tmpfiles.rules = map (d: "d '${d}' 0700 65532 65532 - -") dataDirs;
       })
-
-      remap
     ];
 }
