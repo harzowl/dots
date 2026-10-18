@@ -206,6 +206,40 @@ mkDotsModule {
         '';
       };
 
+      ytdlpSourceOrder = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.enum [
+            "soundcloud"
+            "bandcamp"
+            "internet_archive"
+          ]
+        );
+        default = [
+          "soundcloud"
+          "bandcamp"
+          "internet_archive"
+        ];
+        description = ''
+          Fallback sources tried, in order, only when YouTube or YouTube Music
+          has no playable candidate. YouTube is always tried first, and an
+          ambiguous YouTube pool is never overridden. An empty list disables the
+          chain.
+        '';
+      };
+
+      ytdlpSourceTimeouts = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "soundcloud=2.5s"
+          "bandcamp=2.5s"
+          "internet_archive=2.5s"
+        ];
+        description = ''
+          `source=duration` bounds, one per fallback source, covering its search
+          and its resolve. The whole identification keeps its own bound.
+        '';
+      };
+
       stationsEnabled = lib.mkOption {
         type = lib.types.bool;
         default = true;
@@ -332,6 +366,8 @@ mkDotsModule {
             genreDisplayGenreModes
             genreDisplayExceptions
             lidarrMonitor
+            ytdlpSourceOrder
+            ytdlpSourceTimeouts
             stationsEnabled
             stationPinned
             stationSize
