@@ -21,6 +21,8 @@ import tempfile
 def render_value(value):
     if isinstance(value, bool):
         return "True" if value else "False"
+    if isinstance(value, list):
+        return ",".join(render_value(item) for item in value)
     return str(value)
 
 

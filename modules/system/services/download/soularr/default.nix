@@ -106,6 +106,14 @@ mkDotsModule {
               lib.types.int
               lib.types.float
               lib.types.str
+              (lib.types.listOf (
+                lib.types.oneOf [
+                  lib.types.bool
+                  lib.types.int
+                  lib.types.float
+                  lib.types.str
+                ]
+              ))
             ]
           )
         );
