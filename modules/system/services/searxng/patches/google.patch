@@ -1,5 +1,5 @@
---- a/searx/engines/google.py	2026-10-10 14:00:04.785371993 +0200
-+++ b/searx/engines/google.py	2026-10-10 14:00:04.786435374 +0200
+--- a/searx/engines/google.py
++++ b/searx/engines/google.py
 @@ -9,21 +9,20 @@
  - :ref:`google scholar engine`
  - :ref:`google autocomplete`
@@ -79,7 +79,15 @@
      return raw_url
  
  
-@@ -314,6 +305,7 @@
+@@ -308,12 +299,13 @@
+ ) -> None:
+     google_info = get_google_info(params, eng_traits or traits)
+     if not use_locales:
+-        google_info["params"].pop("lr")
+-        google_info["params"].pop("cr")
++        google_info["params"].pop("lr", None)
++        google_info["params"].pop("cr", None)
+ 
      start = (params["pageno"] - 1) * 10
      args: dict[str, t.Any] = {
          "q": query,
@@ -87,7 +95,7 @@
          "sca_esv": "1",
          **google_info["params"],
          **(extra_args or {}),
-@@ -325,9 +317,11 @@
+@@ -325,13 +317,19 @@
      if use_safesearch and params["safesearch"]:
          args["safe"] = (safesearch_map or filter_mapping)[params["safesearch"]]
  
@@ -102,7 +110,16 @@
  
  
  def request(query: str, params: "OnlineParams") -> None:
-@@ -339,19 +333,22 @@
+-    google_request(query, params)
++    # `lr`/`cr` are hard result filters, not interface preferences: an `en-US`
++    # request drops every page Google considers non-US, and a `pl` one every
++    # non-Polish page, so a query Google itself answers comes back empty.  Send
++    # only `hl`, the interface language, as Google's own web UI does.
++    google_request(query, params, use_locales=False)
+ 
+ 
+ def response(resp: "SXNG_Response") -> EngineResults:
+@@ -339,19 +337,22 @@
      dom = wml_dom(resp)
  
      # parse results
@@ -130,7 +147,7 @@
              if raw_url is None:
                  logger.debug(
                      'ignoring item from the result_xpath list: missing url of title "%s"',
-@@ -360,10 +357,10 @@
+@@ -360,10 +361,10 @@
                  continue
  
              url = unwrap_google_url(raw_url)

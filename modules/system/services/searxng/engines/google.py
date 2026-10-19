@@ -299,8 +299,8 @@ def google_request(
 ) -> None:
     google_info = get_google_info(params, eng_traits or traits)
     if not use_locales:
-        google_info["params"].pop("lr")
-        google_info["params"].pop("cr")
+        google_info["params"].pop("lr", None)
+        google_info["params"].pop("cr", None)
 
     start = (params["pageno"] - 1) * 10
     args: dict[str, t.Any] = {
@@ -325,7 +325,11 @@ def google_request(
 
 
 def request(query: str, params: "OnlineParams") -> None:
-    google_request(query, params)
+    # `lr`/`cr` are hard result filters, not interface preferences: an `en-US`
+    # request drops every page Google considers non-US, and a `pl` one every
+    # non-Polish page, so a query Google itself answers comes back empty.  Send
+    # only `hl`, the interface language, as Google's own web UI does.
+    google_request(query, params, use_locales=False)
 
 
 def response(resp: "SXNG_Response") -> EngineResults:
