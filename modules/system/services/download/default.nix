@@ -6,6 +6,7 @@
     ./qbittorrent
     ./radarr
     ./slskd
+    ./slskd-import
     ./sonarr
     ./soularr
   ];
