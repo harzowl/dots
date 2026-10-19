@@ -1,8 +1,6 @@
-# Secrets never enter the Nix store. `secretEnv` maps a `NAVISCOUT_*` name to a
-# neutral key found in `environmentFiles`, and a oneshot unit writes the
-# prefixed dotenv systemd reads. The source files stay the consumer's.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
+  mkSecretEnv = import ../../../../../lib/mkSecretEnv.nix;
 
   serviceName = "naviscout";
 in
@@ -354,8 +352,15 @@ mkDotsModule {
     let
       inherit (args) lib pkgs;
 
-      secretEnvFile = "/run/${serviceName}.env";
       remapEnabled = cfg.secretEnv != { };
+
+      remap = mkSecretEnv {
+        inherit lib pkgs;
+        service = serviceName;
+        target = "/run/${serviceName}.env";
+        inherit (cfg) environmentFiles;
+        mapping = cfg.secretEnv;
+      };
 
       fallbackSourceNames = [
         "soundcloud"
@@ -409,13 +414,6 @@ mkDotsModule {
           ${name} = rendered;
         };
 
-      remapScript = pkgs.writeShellScript "naviscout-secrets-env" (builtins.readFile ./secrets-env.sh);
-      remapArgs = lib.concatMapStringsSep " " lib.escapeShellArg (
-        [ secretEnvFile ]
-        ++ cfg.environmentFiles
-        ++ [ "--" ]
-        ++ lib.mapAttrsToList (env: secret: "${env}=${secret}") cfg.secretEnv
-      );
     in
     lib.mkMerge [
       {
@@ -437,7 +435,7 @@ mkDotsModule {
         services.naviscout = {
           enable = true;
           inherit (cfg) upstreamUrl credentials;
-          environmentFiles = cfg.environmentFiles ++ lib.optional remapEnabled secretEnvFile;
+          environmentFiles = cfg.environmentFiles ++ lib.optional remapEnabled remap.environmentFile;
           settings = lib.mkMerge [
             (whenSet "NAVISCOUT_UPSTREAM_INSECURE_TLS" cfg.upstream.insecureTls)
             (whenSet "NAVISCOUT_UPSTREAM_TIMEOUT" cfg.upstream.timeout)
@@ -554,29 +552,13 @@ mkDotsModule {
         };
 
         systemd.services.${serviceName} = lib.mkIf remapEnabled {
-          after = [ "${serviceName}-env.service" ];
-          wants = [ "${serviceName}-env.service" ];
+          after = [ "${remap.unitName}.service" ];
+          wants = [ "${remap.unitName}.service" ];
         };
       }
 
       (lib.mkIf remapEnabled {
-        systemd.services."${serviceName}-env" = {
-          description = "Map the naviscout secrets into their NAVISCOUT_ env names";
-          after = [ "secretspec.service" ];
-          wants = [ "secretspec.service" ];
-          before = [ "${serviceName}.service" ];
-          partOf = [ "secretspec.service" ];
-          wantedBy = [ "multi-user.target" ];
-          path = [
-            pkgs.coreutils
-            pkgs.gnused
-          ];
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            ExecStart = "${remapScript} ${remapArgs}";
-          };
-        };
+        systemd.services.${remap.unitName} = remap.unit;
       })
     ];
 }

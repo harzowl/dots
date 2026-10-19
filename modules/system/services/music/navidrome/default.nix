@@ -1,6 +1,7 @@
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
+  mkSecretEnv = import ../../../../../lib/mkSecretEnv.nix;
 
   defaults = {
     name = "navidrome";
@@ -68,6 +69,30 @@ mkDotsModule {
             in `<dataDir>/plugins` and are picked up on start (or on rescan).
           '';
         };
+      };
+      secretEnv = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = {
+          ND_LASTFM_APIKEY = "LASTFM_API_KEY";
+          ND_LASTFM_SECRET = "LASTFM_SECRET";
+          ND_SPOTIFY_ID = "SPOTIFY_ID";
+          ND_SPOTIFY_SECRET = "SPOTIFY_SECRET";
+        };
+        description = ''
+          Map a `ND_*` env name to a neutral secret name looked up in
+          `secretEnvSources`. The values are re-emitted into a runtime dotenv
+          added to the container's environment files, so a secret never enters
+          the Nix store. Set to `{ }` to disable the remap.
+        '';
+      };
+      secretEnvSources = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ "/run/secretspec/env" ];
+        description = ''
+          Dotenv files the `secretEnv` values are read from, in order. The
+          generated file is what the container consumes; these sources are not
+          passed to it.
+        '';
       };
       admin = {
         username = lib.mkOption {
@@ -166,6 +191,18 @@ mkDotsModule {
       inherit (args) lib pkgs;
       pluginsDir = "${cfg.dataDir}/plugins";
 
+      remapEnabled = cfg.secretEnv != { };
+
+      remap = mkSecretEnv {
+        inherit lib pkgs;
+        service = cfg.name;
+        target = "/run/${cfg.name}-lastfm.env";
+        unit = "${cfg.name}-lastfm-env";
+        consumer = "docker-${cfg.name}.service";
+        environmentFiles = cfg.secretEnvSources;
+        mapping = cfg.secretEnv;
+      };
+
       syncUsers =
         if cfg.admin.sync == null then
           null
@@ -222,6 +259,7 @@ mkDotsModule {
       (mkDockerService.config {
         spec = cfg // {
           settings = { };
+          environmentFiles = cfg.environmentFiles ++ lib.optional remapEnabled remap.environmentFile;
           volumes = [
             "${cfg.dataDir}:/data"
             "${cfg.musicDir}:/music:ro"
@@ -230,6 +268,13 @@ mkDotsModule {
         inherit defaults;
       } args)
       {
+        assertions = [
+          {
+            assertion = !remapEnabled || cfg.secretEnvSources != [ ];
+            message = "dots.system.services.music.navidrome.secretEnv needs secretEnvSources to read the secrets from.";
+          }
+        ];
+
         systemd = {
           tmpfiles.rules = [
             "d '${cfg.dataDir}' 0755 ${cfg.dataOwner} - -"
@@ -238,69 +283,74 @@ mkDotsModule {
           ]
           ++ map (f: "C '${pluginsDir}/${baseNameOf f}' 0600 ${cfg.dataOwner} - - ${f}") cfg.plugins.files;
 
-          services."${cfg.name}-admin" = lib.mkIf (cfg.admin.username != null) {
-            description = "Ensure the Navidrome admin account";
-            after = [ "docker-${cfg.name}.service" ];
-            requires = [ "docker-${cfg.name}.service" ];
-            partOf = [ "docker-${cfg.name}.service" ];
-            wantedBy = [ "multi-user.target" ];
-            serviceConfig = {
-              Type = "oneshot";
-              RemainAfterExit = true;
-            };
-            path =
-              with args.pkgs;
-              [
-                docker
-                util-linux
-                coreutils
-                gnugrep
-                gnused
-              ]
-              ++ lib.optionals (cfg.admin.sync != null) [
-                curl
-                jq
-              ];
-            script = ''
-              set -u
-              # A deploy restarts the container; wait for it before touching it.
-              for _ in $(seq 1 60); do
-                docker exec ${cfg.name} /app/navidrome user list -n >/dev/null 2>&1 && break
-                sleep 2
-              done
+          services = {
+            ${remap.unitName} = lib.mkIf remapEnabled remap.unit;
 
-              if docker exec ${cfg.name} /app/navidrome user list -n 2>/dev/null | cut -d, -f2 | grep -qx '${cfg.admin.username}'; then
-                echo "Navidrome admin '${cfg.admin.username}' already exists"
-              else
-                pw="$(sed -n 's/^${cfg.admin.passwordKey}=//p' ${toString cfg.admin.passwordFile})"
-                # The CLI prompts on a TTY; feed it via a PTY. The PTY echoes the
-                # input, so keep its output off the journal.
-                printf '%s\n%s\n' "$pw" "$pw" | script -qec \
-                  "docker exec -it ${cfg.name} /app/navidrome user create --username '${cfg.admin.username}' --admin -n" /dev/null >/dev/null 2>&1 \
-                  || echo "warning: could not create the Navidrome admin"
-              fi
-              ${lib.concatMapStrings (u: ''
-                if docker exec ${cfg.name} /app/navidrome user list -n 2>/dev/null | cut -d, -f2 | grep -qx ${lib.escapeShellArg u}; then
-                  :
+            "${cfg.name}-admin" = lib.mkIf (cfg.admin.username != null) {
+              description = "Ensure the Navidrome admin account";
+              after = [ "docker-${cfg.name}.service" ];
+              requires = [ "docker-${cfg.name}.service" ];
+              partOf = [ "docker-${cfg.name}.service" ];
+              wantedBy = [ "multi-user.target" ];
+              serviceConfig = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+              };
+              path =
+                with args.pkgs;
+                [
+                  docker
+                  util-linux
+                  coreutils
+                  gnugrep
+                  gnused
+                ]
+                ++ lib.optionals (cfg.admin.sync != null) [
+                  curl
+                  jq
+                ];
+              script = ''
+                set -u
+                # A deploy restarts the container; wait for it before touching it.
+                for _ in $(seq 1 60); do
+                  docker exec ${cfg.name} /app/navidrome user list -n >/dev/null 2>&1 && break
+                  sleep 2
+                done
+
+                if docker exec ${cfg.name} /app/navidrome user list -n 2>/dev/null | cut -d, -f2 | grep -qx '${cfg.admin.username}'; then
+                  echo "Navidrome admin '${cfg.admin.username}' already exists"
                 else
-                  # ExtAuth on /rest does not auto-provision; seed the account with
-                  # a random local password (logins go through the gate).
-                  pw="$(head -c 24 /dev/urandom | base64)"
+                  pw="$(sed -n 's/^${cfg.admin.passwordKey}=//p' ${toString cfg.admin.passwordFile})"
+                  # The CLI prompts on a TTY; feed it via a PTY. The PTY echoes the
+                  # input, so keep its output off the journal.
                   printf '%s\n%s\n' "$pw" "$pw" | script -qec \
-                    "docker exec -it ${cfg.name} /app/navidrome user create --username ${lib.escapeShellArg u} -n" /dev/null >/dev/null 2>&1 \
-                    && echo "created Navidrome user '${u}'" \
-                    || echo "warning: could not create Navidrome user '${u}'"
+                    "docker exec -it ${cfg.name} /app/navidrome user create --username '${cfg.admin.username}' --admin -n" /dev/null >/dev/null 2>&1 \
+                    || echo "warning: could not create the Navidrome admin"
                 fi
-              '') cfg.admin.ensureUsers}
-              ${lib.optionalString (cfg.admin.sync != null) ''
-                # ExtAuth on /rest does not auto-provision; create what is missing.
-                ${syncUsers} || echo "warning: could not mirror the realm's users"
-              ''}
-              ${lib.concatMapStrings (u: ''
-                docker exec ${cfg.name} /app/navidrome user edit --user '${u}' --set-admin -n >/dev/null 2>&1 || true
-              '') cfg.admin.ensureAdmins}
-            '';
+                ${lib.concatMapStrings (u: ''
+                  if docker exec ${cfg.name} /app/navidrome user list -n 2>/dev/null | cut -d, -f2 | grep -qx ${lib.escapeShellArg u}; then
+                    :
+                  else
+                    # ExtAuth on /rest does not auto-provision; seed the account with
+                    # a random local password (logins go through the gate).
+                    pw="$(head -c 24 /dev/urandom | base64)"
+                    printf '%s\n%s\n' "$pw" "$pw" | script -qec \
+                      "docker exec -it ${cfg.name} /app/navidrome user create --username ${lib.escapeShellArg u} -n" /dev/null >/dev/null 2>&1 \
+                      && echo "created Navidrome user '${u}'" \
+                      || echo "warning: could not create Navidrome user '${u}'"
+                  fi
+                '') cfg.admin.ensureUsers}
+                ${lib.optionalString (cfg.admin.sync != null) ''
+                  # ExtAuth on /rest does not auto-provision; create what is missing.
+                  ${syncUsers} || echo "warning: could not mirror the realm's users"
+                ''}
+                ${lib.concatMapStrings (u: ''
+                  docker exec ${cfg.name} /app/navidrome user edit --user '${u}' --set-admin -n >/dev/null 2>&1 || true
+                '') cfg.admin.ensureAdmins}
+              '';
+            };
           };
+
           timers."${cfg.name}-admin" = lib.mkIf (cfg.admin.username != null && cfg.admin.sync != null) {
             wantedBy = [ "timers.target" ];
             timerConfig = {

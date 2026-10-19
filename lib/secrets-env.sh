@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build a dotenv of `NAME=value` pairs from a secret store, so a service that
-# only reads prefixed env vars (NAVISCOUT_*) can consume neutrally named
-# secrets without the values touching the Nix store.
+# only reads prefixed env vars can consume neutrally named secrets without the
+# values touching the Nix store.
 #
 # Usage: secrets-env.sh OUT SOURCE... -- NAME=SECRET...
 #   OUT          file to write (mode 0600)
@@ -11,6 +11,7 @@
 # A missing secret emits an empty value (the service's own default/validation
 # decides what that means).
 set -eu
+umask 077
 
 out=$1
 shift

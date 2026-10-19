@@ -41,9 +41,11 @@ most of the list is "use the default and don't opt out".
 3. **Pass secrets in, never bake them in.** Secrets arrive through
    `environmentFiles`, systemd credentials or a mounted file — never as a module
    `settings` value (that lands in the Nix store) and never in generated config.
-   Never log a secret. A change to an `environmentFiles` file **restarts the
-   consuming container**: `mkDockerService` wires a `systemd.path` watcher per
-   file, since a Nix-config change alone only restarts on unit-definition
+   Never log a secret. A service that needs renamed variables declares
+   `secretEnv`; `mkSecretEnv` writes the runtime dotenv, so the consuming unit
+   never spells the remap out. A change to an `environmentFiles` file **restarts
+   the consuming container**: `mkDockerService` wires a `systemd.path` watcher
+   per file, since a Nix-config change alone only restarts on unit-definition
    changes (verified by rewriting the file and watching the container restart).
 4. **Derive, don't persist.** Prefer stateless verification (signature + expiry)
    over a server-side session store, so a restart cannot resurrect or strand a
