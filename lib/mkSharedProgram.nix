@@ -1,14 +1,3 @@
-# Builds a module for a program that is DEFINED ONCE but surfaced under both
-# `dots.system.*` and `dots.home.*`. The importer passes its `target`
-# ("system" | "home"); the factory prepends it to `optionPath`, so this single
-# source file both declares `dots.system.<optionPath>` and
-# `dots.home.<optionPath>`, and emits the target-appropriate projection:
-#
-#   target = "system" -> `system args cfg` (NixOS config)
-#   target = "home"   -> `home args cfg`   (home-manager config)
-#
-# `options`, `home`, `system` and `imports` are functions of the module args when
-# they need them; `home` and `system` take `args` first, then `cfg`.
 {
   target, # "system" | "home" — which projection to emit
   root ? [
@@ -25,7 +14,6 @@
 {
   config,
   lib,
-  # `options`, `home` and `system` read `args.pkgs`, so it must stay a formal.
   # deadnix: skip
   pkgs,
   ...
@@ -33,8 +21,6 @@
 let
   fullPath = root ++ optionPath;
   cfg = lib.getAttrFromPath fullPath config;
-  # `root` is threaded through so a projection can look up a sibling program's
-  # config (e.g. zoxide reading fzf) without knowing how the tree was rooted.
   withRoot = args // {
     inherit root;
   };

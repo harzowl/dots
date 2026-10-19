@@ -1,13 +1,3 @@
-# zram: an in-memory compressed swap device, sized as a fraction of RAM. It is a
-# fast OOM cushion — pages are compressed in RAM instead of paged to disk — so it
-# should sit at a higher priority than any disk swap and be treated as a safety
-# net, not usable memory.
-#
-#   dots.system.memory.zram = {
-#     enable = true;
-#     memoryPercent = 50;    # ≤ this percentage of RAM, compressed
-#     algorithm = "zstd";
-#   };
 let
   mkDotsModule = import ../../../../lib/mkDotsModule.nix;
 in

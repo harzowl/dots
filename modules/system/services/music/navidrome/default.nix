@@ -1,20 +1,3 @@
-# Navidrome — a music server / streamer, run from the `deluan/navidrome` image.
-# It listens on :4533; the published host port is what the front proxy reaches.
-#
-# Configuration is passed as environment variables through `settings`, keyed by
-# Navidrome's own setting names — each is mapped to `ND_<SETTING>` (uppercased,
-# `.` -> `_`), so `musicFolder` -> `ND_MUSICFOLDER` and
-# `"ExtAuth.TrustedSources"` -> `ND_EXTAUTH_TRUSTEDSOURCES`.
-#
-# Navidrome has NO native OIDC and no auth plugin hook, so logins are done by an
-# authenticating proxy in front of it: set `"ExtAuth.TrustedSources"` to the
-# proxy's network and it uses the `"ExtAuth.UserHeader"` (default `Remote-User`)
-# to identify the user. Subsonic clients keep their own credentials via `/rest/*`
-# (carve that path out of the proxy's authentication).
-#
-# The `plugins` option controls Navidrome's WASM plugin system (`.ndp` packages):
-# `plugins.files` installs packages into the plugins folder declaratively, and
-# `plugins.enable`/`autoReload`/`logLevel` map to the `Plugins.*` settings.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
@@ -222,8 +205,6 @@ mkDotsModule {
         else
           toString v;
 
-      # `musicFolder` -> `ND_MUSICFOLDER`, `ExtAuth.TrustedSources` ->
-      # `ND_EXTAUTH_TRUSTEDSOURCES`.
       ndEnvironment = lib.mapAttrs' (
         k: v: lib.nameValuePair ("ND_" + lib.toUpper (lib.replaceStrings [ "." ] [ "_" ] k)) (envValue v)
       ) cfg.settings;
@@ -257,9 +238,6 @@ mkDotsModule {
           ]
           ++ map (f: "C '${pluginsDir}/${baseNameOf f}' 0600 ${cfg.dataOwner} - - ${f}") cfg.plugins.files;
 
-          # Navidrome has no OIDC, so seed its admin account and keep the listed
-          # admins marked admin. Idempotent, and re-checked when the container
-          # (re)starts. The password comes from a file (e.g. a secretspec path).
           services."${cfg.name}-admin" = lib.mkIf (cfg.admin.username != null) {
             description = "Ensure the Navidrome admin account";
             after = [ "docker-${cfg.name}.service" ];

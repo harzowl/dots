@@ -1,5 +1,3 @@
-# dust, defined once. dust has no config file, so `settings` become default flags
-# on a `dust` wrapper that execs the real binary (see lib/mkCliWrapper.nix).
 {
   target,
   root ? [

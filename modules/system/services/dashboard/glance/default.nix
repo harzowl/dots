@@ -2,7 +2,6 @@ let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
 
-  # Built-in Glance themes, exposed through the `theme` option below.
   builtinThemes = import ./themes.nix;
 
   defaults = {
@@ -218,8 +217,6 @@ mkDotsModule {
       inherit (args) pkgs;
       inherit (args) pkgsUnstable;
 
-      # Applied to the upstream build; the bundled patches add per-site `tags`
-      # and `description` to the monitor widget (upstream has neither).
       patchedGlance =
         if cfg.patches != [ ] then
           pkgsUnstable.glance.overrideAttrs (old: {
@@ -230,8 +227,6 @@ mkDotsModule {
 
       glancePackage = if cfg.package != null then cfg.package else patchedGlance;
 
-      # A local build runs from a Nix-built image loaded into the backend,
-      # instead of the upstream image; `image` must match the loaded tag.
       imageName = "${cfg.name}-patched";
       imageTag = if glancePackage == null then null else glancePackage.version or "latest";
       containerImage =
@@ -297,10 +292,8 @@ mkDotsModule {
         }
         // lib.optionalAttrs (p.headWidgets != [ ]) { head-widgets = p.headWidgets; };
 
-      # Presets offered in the picker: the built-ins (if enabled) plus any extras.
       presets = (lib.optionalAttrs cfg.theme.allThemes builtinThemes) // cfg.theme.presets;
 
-      # The default theme's colours come from the named preset (built-in or extra).
       defaultColors =
         if cfg.theme.default == null then
           { }

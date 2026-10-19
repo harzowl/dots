@@ -1,5 +1,3 @@
-# zsh, defined once for both targets. NixOS's `programs.zsh` has no `package`
-# option, so the system target installs it via `environment.systemPackages`.
 {
   target,
   root ? [

@@ -1,8 +1,3 @@
-# Built-in Glance themes, copied from glanceapp/glance's docs/themes.md.
-# Keys are the preset names shown in the dashboard's theme picker; these are
-# only the *definitions* — the module's `theme.allThemes` / `theme.presets`
-# options decide which are exposed. Colour values are HSL strings, as Glance
-# expects.
 {
   teal-city = {
     background-color = "225 14 15";

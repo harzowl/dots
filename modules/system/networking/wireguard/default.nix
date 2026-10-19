@@ -1,33 +1,3 @@
-# WireGuard. Two ways to use it:
-#
-# 1. `mesh` — declare the topology once; each host's interface is derived (tunnel
-#    IPs by sorted member order, peer lists, the client's endpoint and route
-#    exception). This host is `config.dots.system.core.hostname`.
-#
-#      dots.system.networking.wireguard = {
-#        enable = true;
-#        mesh = {
-#          enable = true;
-#          server = "edge";              # the egress gateway (NATs peers out)
-#          subnet = "10.10.0";
-#          port = 51820;
-#          privateKeyFile = "/run/secretspec/WG_EDGE_PRIVATE_KEY";
-#          members = {
-#            edge = { publicKey = "…"; address = "203.0.113.10"; };
-#            hub  = { publicKey = "…"; address = "192.168.1.121"; };
-#          };
-#        };
-#      };
-#
-# 2. `interfaces` / `egress` — the low-level escape hatch for anything the mesh
-#    does not cover (`interfaces` is forwarded to `networking.wireguard.interfaces`;
-#    `egress` adds NAT + forwarding + firewall for a gateway).
-#
-#      dots.system.networking.wireguard = {
-#        enable = true;
-#        egress = { enable = true; interface = "eth0"; };
-#        interfaces.wg0 = { ips = [ "10.10.0.1/24" ]; listenPort = 51820; … };
-#      };
 {
   config,
   lib,
@@ -37,8 +7,6 @@ let
   cfg = config.dots.system.networking.wireguard;
   inherit (cfg) mesh;
 
-  # This host's name in the mesh is its hostname; its tunnel IP is `<subnet>.N`
-  # by sorted member order (unless the member sets `ip`).
   self = config.dots.system.core.hostname;
   names = lib.attrNames mesh.members;
   ips = lib.listToAttrs (
@@ -79,8 +47,6 @@ let
               if mesh.routeAll then
                 [ "0.0.0.0/0" ] ++ lib.optional mesh.ipv6 "::/0"
               else
-                # Still peer on the tunnel subnet (so replies to the server and
-                # other members traverse it), just don't grab the default route.
                 [ "${mesh.subnet}.0/24" ];
             persistentKeepalive = 25;
           }

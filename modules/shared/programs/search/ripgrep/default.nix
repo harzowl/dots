@@ -1,7 +1,3 @@
-# ripgrep, defined once. home-manager already ships `programs.ripgrep`, so the
-# home target uses it for installation; `settings` go to ripgrep's native config
-# file via RIPGREP_CONFIG_PATH (no wrapper). The system target installs the
-# package and points the env var at the same config.
 {
   target,
   root ? [

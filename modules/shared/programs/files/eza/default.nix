@@ -1,12 +1,3 @@
-# eza, defined once. Imported by both `modules/system` and `modules/home` (each
-# passing its target), so the same definition surfaces as
-# `dots.system.programs.files.eza` and `dots.home.programs.files.eza`.
-#
-#   system target -> install the package system-wide
-#   home target   -> manage `programs.eza` per user
-#
-# `aliasLs` replaces `ls` with eza in every shell, and `aliases` adds any extra
-# ones (e.g. `{ t = "eza --tree"; }`).
 {
   target,
   root ? [

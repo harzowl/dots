@@ -1,6 +1,3 @@
-# fish, defined once for both targets. NixOS and home-manager both expose
-# `programs.fish`; the theme file lands in the system conf.d on the system target
-# and in the user's config on the home target.
 {
   target,
   root ? [

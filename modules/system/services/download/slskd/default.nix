@@ -1,6 +1,3 @@
-# slskd — Soulseek client with a web UI (official image), :5030. Only the
-# service's own identity lives here; the consumer supplies volumes, the
-# environment and how it is fronted.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
@@ -40,8 +37,6 @@ mkDotsModule {
         '';
       };
 
-      # The container's own, non-secret environment (e.g. `tz`), mapped
-      # camelCase -> UPPER_SNAKE exactly like `mkDockerService.settings`.
       environment = lib.mkOption {
         type = lib.types.attrsOf lib.types.anything;
         default = { };

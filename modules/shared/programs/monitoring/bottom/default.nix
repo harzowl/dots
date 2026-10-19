@@ -1,11 +1,3 @@
-# bottom, defined once. Imported by both `modules/system` and `modules/home`
-# (each passing its target), so the same definition surfaces as
-# `dots.system.programs.monitoring.bottom` and
-# `dots.home.programs.monitoring.bottom` — the end-user configures whichever
-# namespace they want.
-#
-#   system target -> install the package system-wide
-#   home target   -> manage `programs.bottom` (package + settings) per user
 {
   target,
   root ? [

@@ -1,6 +1,3 @@
-# fzf — a command-line fuzzy finder. home-manager ships `programs.fzf`, so the
-# home target uses it (with its key bindings); the system target just installs
-# the package.
 {
   target,
   root ? [
@@ -11,9 +8,6 @@
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
 
-  # Applied to every fzf invocation through `FZF_DEFAULT_OPTS`, ahead of the
-  # consumer's `defaultOptions` — which appends rather than replaces, so the
-  # presentation cannot be lost and the consumer's options still win.
   presentation = [
     "--style=full"
     "--pointer=❯"
@@ -78,9 +72,6 @@ mkSharedProgram {
     let
       inherit (args) lib pkgs;
 
-      # One formatter, shared by every shell: the history source emits
-      # `<timestamp>\t<command>` records, this renders the date with GNU
-      # coreutils' `date` and syntax-colours the command with fish_indent.
       historyDate = pkgs.writeShellScript "history-date" (
         lib.replaceStrings
           [ "@DATE@" "@FISH_INDENT@" ]

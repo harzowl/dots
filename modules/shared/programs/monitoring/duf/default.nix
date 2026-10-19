@@ -1,6 +1,3 @@
-# duf, defined once. duf has no config file, so `settings` are turned into flags
-# on a `duf` wrapper that execs the real binary, e.g.
-# `settings.only = [ "special" ]` runs `duf --only special`.
 {
   target,
   root ? [
@@ -12,21 +9,16 @@ let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
   mkCliWrapper = import ../../../../../lib/mkCliWrapper.nix;
 
-  # Named patches; each is toggled by its matching `patches.<name>` option.
   patchFiles = {
     usage-bar = ./patches/usage-bar.patch;
     type-color = ./patches/type-color.patch;
   };
 
-  # Defaults: hide duf's `special` table (pseudo/duplicate/inaccessible
-  # filesystems), and use duf's `ansi` theme so colors come from the terminal's
-  # base16 palette instead of its built-in RGB theme. Override via `settings`.
   defaults = {
     hide = [ "special" ];
     theme = "ansi";
   };
 
-  # Apply the enabled patches to the package.
   mkPackage =
     args: cfg:
     let

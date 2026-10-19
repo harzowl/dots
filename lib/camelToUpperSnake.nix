@@ -1,6 +1,3 @@
-# camelCase -> UPPER_SNAKE, treating a run of capitals as one word, so
-# `stationTTL` -> `STATION_TTL` (not `STATION_T_T_L`) and `APIClient` ->
-# `API_CLIENT`.
 { lib }:
 key:
 let

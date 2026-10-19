@@ -1,6 +1,3 @@
-# Bazarr — subtitle manager for Sonarr/Radarr (LinuxServer image), :6767. Only
-# the service's own identity lives here; the consumer supplies volumes, the
-# environment (TZ/PUID/PGID) and how it is fronted.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;

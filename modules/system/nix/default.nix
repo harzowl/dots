@@ -1,4 +1,3 @@
-# Nix daemon / store housekeeping, opt-in per node.
 { config, lib, ... }:
 let
   cfg = config.dots.system.nix;

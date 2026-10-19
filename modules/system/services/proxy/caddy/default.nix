@@ -113,7 +113,6 @@ mkDotsModule {
     let
       inherit (args) lib;
       domain = args.config.dots.system.core.domain;
-      # A route's target may be a mesh member (→ its tunnel IP) or an address.
       resolve = host: args.config.dots.system.networking.wireguard.mesh.memberIps.${host} or host;
       routes = lib.mapAttrs' (
         name: r:
@@ -123,8 +122,6 @@ mkDotsModule {
             ++ [
               "encode zstd gzip"
               "reverse_proxy ${r.scheme}://${resolve r.host}:${toString r.port} {"
-              # SearXNG (and most apps) read the client IP from X-Real-IP; Caddy
-              # sets X-Forwarded-For but not this one.
               "	header_up X-Real-IP {http.request.remote.host}"
             ]
             ++ lib.optional (r.proxyConfig != "") r.proxyConfig

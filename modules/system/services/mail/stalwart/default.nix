@@ -1,23 +1,3 @@
-# Stalwart mail server, v0.16+.
-#
-# 0.16 dropped TOML configuration entirely: the only file on disk is a small
-# `config.json` that describes the datastore, and *everything else* (listeners,
-# domains, accounts, routing, TLS, CORS, …) lives inside that datastore as JMAP
-# objects managed through `stalwart-cli` / the WebUI. This module therefore:
-#
-#   * runs `stalwart_0_16` against a generated `config.json` (just the
-#     `DataStore`), and
-#   * optionally drops a declarative apply-plan (`provision`) at
-#     `/etc/stalwart/provision.json` **and replays it automatically** via
-#     `stalwart-provision.service` (a oneshot, run on boot and whenever the
-#     plan changes), authenticated with the admin API key in
-#     `provisionApiKeyFile`.
-#
-# The plan's `upsert`/`update` operations are idempotent and never delete;
-# deletions must be expressed explicitly. `stalwart-cli apply` writes the
-# datastore, but several settings (`MtaStageData`, `SpamSettings`, the SMTP
-# DATA-stage gate) are only read at service start — so the unit restarts
-# Stalwart whenever the plan changed anything.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
 in
@@ -209,11 +189,9 @@ mkDotsModule {
               User = "stalwart";
               Group = "stalwart";
 
-              # Bind standard privileged ports.
               AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
               CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
 
-              # Hardening.
               DeviceAllow = [ "" ];
               LockPersonality = true;
               MemoryDenyWriteExecute = true;
@@ -247,19 +225,13 @@ mkDotsModule {
             };
           };
 
-          # Declarative convergence: apply the plan, then restart Stalwart when it
-          # changed anything — `MtaStageData`/`SpamSettings` and the SMTP DATA-stage
-          # gate are only read at service start.
           stalwart-provision = lib.mkIf (cfg.provision != null && cfg.provisionApiKeyFile != null) {
             description = "Apply the Stalwart provision plan";
             after = [ "stalwart.service" ];
             wants = [ "stalwart.service" ];
             wantedBy = [ "multi-user.target" ];
-            # A deploy can land before Stalwart answers; never give up retrying
-            # (mirrors the oauth2-proxy gates).
             startLimitIntervalSec = 0;
             startLimitBurst = 0;
-            # Re-run whenever the plan changes (i.e. on a new Nix generation).
             restartTriggers = [ cfg.provision ];
             path = [
               cfg.cliPackage

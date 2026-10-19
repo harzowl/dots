@@ -1,23 +1,3 @@
-# oauth2-proxy — OIDC reverse-proxy gates for apps without native SSO (Glance,
-# Navidrome, …). Each entry under `gates` is its own container: it runs the OIDC
-# login and proxies to one upstream app, so front a service by declaring one
-# gate per app:
-#
-#   dots.system.services.auth.oauth2-proxy.gates.glance = {
-#     enable = true;
-#     port = 4180;
-#     settings = { oauth2ProxyUpstreams = "http://127.0.0.1:8082"; … };
-#   };
-#
-# The options are the shared container-service ones (`mkDockerService.options`),
-# so a gate takes the same `network`, `dependsOn`, `settings`, … as any other
-# service. A gate defaults to the host network — `network = { name = "host"; }`
-# — so it reaches the app on `127.0.0.1` and is reachable by the front proxy;
-# set `network = { name = …; subnet = …; ip = …; }` for a user-defined network
-# with a static address, and the network's unit + the gate's ordering come from
-# `mkDockerService.ordering`. `port` is published and opened in the firewall.
-# The client/cookie secrets arrive as `OAUTH2_PROXY_CLIENT_SECRET` /
-# `OAUTH2_PROXY_COOKIE_SECRET` from an env file (the secretspec env file).
 {
   config,
   lib,
@@ -47,7 +27,6 @@ let
     };
   };
 
-  # camelCase -> UPPER_SNAKE (oauth2ProxyClientId -> OAUTH2_PROXY_CLIENT_ID).
   envKey = camelToUpperSnake;
 
   envValue =
@@ -73,7 +52,6 @@ in
       gates = config.dots.system.services.auth.oauth2-proxy.gates;
       enabled = lib.filterAttrs (_: g: g.enable) gates;
 
-      # The option-derived network args + ordering, shared with mkDockerService.
       wire =
         name: g:
         mkDockerService.ordering {
@@ -91,20 +69,12 @@ in
           environmentFiles
           ;
         extraOptions = g.extraOptions ++ (wire name g).networkArgs;
-        # Every gate shares one Keycloak/OIDC config; a gate supplies only what
-        # is its own (client id, upstream, redirect URL, extra roles).
         environment = lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) (
           {
             oauth2ProxyHttpAddress = "0.0.0.0:${toString g.port}";
             oauth2ProxyProvider = "keycloak-oidc";
             oauth2ProxyOidcIssuerUrl = "https://auth.${config.dots.system.core.domain}/realms/${config.dots.system.core.realm}";
             oauth2ProxyEmailDomains = "*";
-            # Keycloak is the only identity source and an account may have no
-            # email at all (or an unverified, foreign one). The gate authorizes
-            # the authenticated Keycloak user, not the email claim, so don't
-            # reject an id_token whose email is absent/unverified. The username
-            # stands in for the email claim because oauth2-proxy insists on one
-            # to build a session; the mirror uses the real email field separately.
             oauth2ProxyInsecureOidcAllowUnverifiedEmail = true;
             oauth2ProxyOidcEmailClaim = "preferred_username";
             oauth2ProxyReverseProxy = true;

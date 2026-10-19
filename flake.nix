@@ -14,20 +14,16 @@
   outputs =
     { self, home-manager, ... }@inputs:
     {
-      # NixOS module library: options under dots.system.*
       nixosModules = {
         default =
           { pkgs, ... }:
           {
             imports = [ (import ./modules/system) ];
-            # nixpkgs-unstable for the current packages the modules default to
-            # (secretspec, searxng); the consumer supplies nothing.
             _module.args.pkgsUnstable = import inputs."nixpkgs-unstable" {
               system = pkgs.stdenv.hostPlatform.system;
             };
           };
 
-        # NixOS Home Manager integration: options under dots.home.users.*
         home = {
           imports = [
             home-manager.nixosModules.home-manager
@@ -35,20 +31,13 @@
           ];
         };
 
-        # Reusable, overridable baseline bundles (see presets/). They are NixOS
-        # modules, so compose them with `imports = [ dots.nixosModules.presetServer ];`.
         presetServer = import ./presets/server.nix;
       };
 
-      # Home Manager module library: options under dots.home.*
       homeModules.default = import ./modules/home;
 
-      # `nix fmt` (and the pre-commit hook) format Nix with nixfmt.
       formatter.x86_64-linux = inputs.nixpkgs.legacyPackages.x86_64-linux.nixfmt;
 
-      # The music.subsonic-auth shim binary. Its `go test` suite runs in
-      # buildGoModule's checkPhase, so `nix build .#subsonic-auth` (and the
-      # `checks` entry below, which `nix flake check` evaluates) is the test gate.
       packages.x86_64-linux.subsonic-auth =
         inputs.nixpkgs.legacyPackages.x86_64-linux.callPackage
           ./modules/system/services/music/subsonic-auth/package.nix
@@ -57,8 +46,6 @@
       checks.x86_64-linux = {
         subsonic-auth = self.packages.x86_64-linux.subsonic-auth;
 
-        # statix + deadnix over the flake's own Nix sources; a finding fails
-        # `nix flake check`.
         lints =
           let
             pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
@@ -79,11 +66,6 @@
               touch "$out"
             '';
 
-        # Credential scan over the whole flake source (test files and fixtures
-        # included): gitleaks' format rules plus scripts/secret-scan.py's
-        # high-entropy token-shape check. Fails the build on any credential-shaped
-        # string, so a real secret can never be committed here or in a consumer
-        # that runs this check.
         secret-scan =
           let
             pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
@@ -102,9 +84,6 @@
               touch "$out"
             '';
 
-        # The fixture suites for both guards — the email-domain rule in
-        # secret-scan.py and the derived-identity check — so a regression in
-        # either fails the build rather than only a local run.
         guards =
           let
             pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
@@ -125,10 +104,6 @@
               touch "$out"
             '';
 
-        # The camelCase -> UPPER_SNAKE mapping must keep initialisms together:
-        # `stationTTL` is NAVISCOUT_STATION_TTL, the name naviscout's docs and
-        # settings use, not NAVISCOUT_STATION_T_T_L. These cases are the
-        # documented names of the naviscout keys the module derives.
         env-keys =
           let
             pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
@@ -178,9 +153,6 @@
             touch "$out"
           '';
 
-        # The mirrored account's email table: a realm address is kept as-is, a
-        # bare username gets the configured domain, and anything else yields no
-        # email rather than an invented one.
         navidrome-sync =
           let
             pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;

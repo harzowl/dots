@@ -1,13 +1,3 @@
-# starship, defined once. Imported by both `modules/system` and `modules/home`
-# (each passing its target), so the same definition surfaces as
-# `dots.system.programs.shell.starship` and
-# `dots.home.programs.shell.starship`.
-#
-# The default prompt is ported from nix-dotfiles but made terminal-dynamic: every
-# color references the `base16` palette below, which maps base16 slots onto the
-# terminal's own base16 ANSI palette. No stylix and no hardcoded hex, so changing
-# the terminal theme changes the prompt. Values use the standard base16-shell
-# 256-color indices (0-21).
 {
   target,
   root ? [
@@ -97,8 +87,6 @@ let
     };
 
     hostname = {
-      # Only shown on remote (SSH) connections, so the prompt does not look
-      # identical on the local host.
       ssh_only = true;
       style = "bg:base08 fg:base01";
       format = "[ 󰱠 $hostname]($style)";
@@ -273,8 +261,6 @@ mkSharedProgram {
           settings = args.lib.recursiveUpdate defaults cfg.settings;
         };
       }
-      # `hostname.ssh_only` keys off SSH_* env; `sudo` resets the environment, so
-      # keep them for the remote host to still show in `sudo`/`sudo -i` shells.
       {
         security.sudo.extraConfig = ''Defaults env_keep += "SSH_CONNECTION SSH_CLIENT SSH_TTY"'';
       }

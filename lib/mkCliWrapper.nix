@@ -1,11 +1,3 @@
-# Builds a `writeShellScriptBin` wrapper that runs `<package>/bin/<name>` with the
-# default flags derived from `settings`, but only adds a default whose flag the
-# user did not already pass. So `dust --depth 0` overrides a configured
-# `--depth 1` instead of the tool erroring on a repeated flag.
-#
-# Settings -> flags: keys become `--<key>` (underscores to dashes), `true` is a
-# bare flag, `false`/`null` are omitted, lists are comma-joined, and other values
-# are passed as the argument.
 {
   lib,
   pkgs,

@@ -1,6 +1,3 @@
-# jq, defined once. It reads no config file, so there is nothing to project but
-# the package: `home` installs it into the user's profile, `system` into
-# `environment.systemPackages`.
 {
   target,
   root ? [

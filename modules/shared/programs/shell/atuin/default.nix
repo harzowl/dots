@@ -1,6 +1,3 @@
-# atuin — shell history search. home-manager ships `programs.atuin`, so the home
-# target uses it (with shell integration for every shell); the system target
-# just installs the package.
 {
   target,
   root ? [
@@ -29,9 +26,6 @@ mkSharedProgram {
         description = "The atuin package to use.";
       };
 
-      # Shell-agnostic by construction: `atuin init` binds Ctrl-R in every shell
-      # it supports and is what each integration (fish, zsh, bash, nushell) runs,
-      # so this is a flag to that one command rather than per-shell config.
       replaceNativeSearch = lib.mkOption {
         type = lib.types.bool;
         default = true;

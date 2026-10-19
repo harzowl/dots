@@ -1,23 +1,3 @@
-# Materialise a SecretSpec profile into runtime files at boot.
-#
-# SecretSpec (https://secretspec.dev) is a provider-agnostic secrets resolver.
-# This module runs it as a systemd oneshot which resolves the declared secrets
-# from their configured provider — e.g. a SOPS-encrypted file — and writes them
-# under a RAM-backed runtime directory, where services consume them as
-# `environmentFile`s or systemd credentials. Plaintext never enters the Nix
-# store or persistent storage.
-#
-#   dots.system.secretspec = {
-#     enable = true;
-#     manifest = ./secretspec.toml;
-#     provider = "sops://secrets.enc.yaml";
-#     environment.SOPS_AGE_KEY_FILE = "/etc/secretspec/age.key";
-#     secrets = [ "STALWART_ADMIN_SECRET" ];
-#     consumers = [ "stalwart.service" ];
-#   };
-#
-# Resolved values appear at `/run/secretspec/env` (the whole profile) and
-# `/run/secretspec/<NAME>` for each entry in `secrets`.
 {
   config,
   lib,
@@ -141,10 +121,6 @@ in
       }
     ];
 
-    # Keep the manifest and provider files under /etc/secretspec for operators
-    # (and so the directory that holds the out-of-band age key exists). The
-    # resolver does NOT read them from here — it reads the generation-pinned
-    # `secretspecDir` — so its result never depends on /etc having caught up.
     environment.etc = {
       "secretspec/secretspec.toml".source = cfg.manifest;
     }
@@ -157,10 +133,7 @@ in
           wantedBy = [ "multi-user.target" ];
           before = cfg.consumers;
           inherit (cfg) environment;
-          # Re-run when the manifest or any provider file changes, so a secret edit
-          # or rename is re-materialised on the next activation.
           restartTriggers = [ cfg.manifest ] ++ lib.attrValues cfg.files;
-          # `sops` is shelled out to by the sops provider; secretspec must be on PATH.
           path = [
             pkgs.sops
             cfg.package

@@ -1,5 +1,3 @@
-# sudo prompt, opt-in per host. Sets the terminal password prompt (SUDO_PROMPT)
-# and keeps it across sudo's environment reset. Value ported from nix-dotfiles.
 { config, lib, ... }:
 let
   cfg = config.dots.system.security.sudo;

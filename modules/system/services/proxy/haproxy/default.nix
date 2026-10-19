@@ -52,7 +52,6 @@ mkDotsModule {
     args: cfg:
     let
       inherit (args) lib;
-      # A target may be a mesh member (→ its tunnel IP) or an address.
       resolve = host: args.config.dots.system.networking.wireguard.mesh.memberIps.${host} or host;
       listenPort = f: if f.listen != null then f.listen else f.port;
       mkForward = name: f: ''

@@ -15,8 +15,6 @@
     useGlobalPkgs = true;
     useUserPackages = true;
 
-    # Back up unmanaged files that would otherwise be clobbered, so activation
-    # never fails on a pre-existing ~/.config/... file.
     backupFileExtension = lib.mkDefault "hm-backup";
 
     users = lib.mapAttrs (
@@ -26,8 +24,6 @@
       in
       lib.mkMerge [
         { imports = [ (import ../../home { root = [ ]; }) ]; }
-        # Enable the login shell's program so its config (theme, aliases, ...) is
-        # actually generated. Options live at `programs.shell.<shell>`.
         (lib.optionalAttrs (shell == "fish") {
           programs.shell.fish.enable = lib.mkDefault true;
         })

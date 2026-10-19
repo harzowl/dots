@@ -1,11 +1,3 @@
-# Builds a module that:
-#   - declares options at dots.<optionPath> with an auto-added `enable` switch
-#   - applies `toConfig args cfg` as config while `when cfg` holds
-#   - passes through `imports` (may be a function of the module args)
-#
-# `options`, `imports`, `toConfig` are functions of the module args
-# ({ config, lib, pkgs, modulesPath, ... }) when they need them;
-# `toConfig` always takes `args` first, then `cfg`.
 {
   optionPath, # path under `dots.`, e.g. [ "system" "services" "openssh" ]
   description, # shown in the generated `enable` option
@@ -17,16 +9,12 @@
 {
   config,
   lib,
-  # `options` and `toConfig` read `args.pkgs`, so it must stay a formal.
   # deadnix: skip
   pkgs,
   ...
 }@args:
 let
   cfg = lib.getAttrFromPath ([ "dots" ] ++ optionPath) config;
-  # `_module.args.pkgsUnstable` (nixpkgs-unstable, exposed by the dots modules)
-  # isn't part of this wrapper's function arguments, so surface it for
-  # `options`/`toConfig`.
   args' = args // {
     pkgsUnstable = config._module.args.pkgsUnstable or null;
   };

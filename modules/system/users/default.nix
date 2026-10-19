@@ -6,8 +6,6 @@
 let
   cfg = config.dots.system.users;
 
-  # `root` is accepted as an entry (`dots.system.users.root`) but is special:
-  # it is not a normal user and ignores `role`, `shell` and `passwordlessSudo`.
   normalUsers = lib.removeAttrs cfg [ "root" ];
 in
 {
@@ -81,8 +79,6 @@ in
         name: u:
         lib.nameValuePair name (
           if name == "root" then
-            # root already exists; the login shell and group memberships are not
-            # managed here. Only the authorized keys and description are.
             lib.mkMerge [
               { openssh.authorizedKeys.keys = u.keys; }
               (lib.mkIf (u.initialPassword != null) { inherit (u) initialPassword; })
@@ -123,9 +119,6 @@ in
     }
 
     (lib.mkIf (lib.any (u: u.role == "admin" && u.passwordlessSudo) (lib.attrValues normalUsers)) {
-      # A dedicated group with passwordless sudo; opted-in admins are added to it
-      # (see the user's `extraGroups`). `!authenticate` rather than a `NOPASSWD:`
-      # rule, because the default `%wheel` rule still prompts for `sudo -v`.
       users.groups.nopasswd = { };
       security.sudo.extraConfig = "Defaults:%nopasswd !authenticate";
     })

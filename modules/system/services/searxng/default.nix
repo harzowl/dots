@@ -2,8 +2,6 @@ let
   mkDotsModule = import ../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../lib/mkDockerService.nix;
 
-  # Engines bind-mounted over the image's: the fork ships upstream's, which are
-  # broken (Google's dead `/wml` endpoint; DuckDuckGo's challenged `html`).
   engines = {
     duckduckgo = ./engines/duckduckgo.py;
     google = ./engines/google.py;
@@ -12,7 +10,6 @@ let
   defaults = {
     name = "searxng";
     image = "ghcr.io/privau/searxng:latest";
-    # The image hardcodes 8080; publish it as 3080 (the port `edge` proxies to).
     ports = [ "3080:8080" ];
   };
 in

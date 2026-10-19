@@ -1,7 +1,3 @@
-# qBittorrent — torrent client (LinuxServer image); its WebUI is :8080, served
-# with VueTorrent as the alternate WebUI. Only the service's own identity lives
-# here; the consumer supplies volumes, the environment (TZ/PUID/PGID) and how
-# it is fronted.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
@@ -11,13 +7,9 @@ let
     image = "lscr.io/linuxserver/qbittorrent:latest";
     ports = [ "127.0.0.1:8080:8080" ];
     openFirewall = false;
-    # The LinuxServer base ships the Docker Mods hook, so this pulls the official
-    # VueTorrent mod into /vuetorrent at container start.
     dockerMods = [ "ghcr.io/vuetorrent/vuetorrent-lsio-mod:latest" ];
   };
 
-  # qBittorrent only *serves* VueTorrent once it points its alternative WebUI at
-  # the mod's folder; the env var alone leaves the stock UI in place.
   webUiPreferences = [
     "WebUI\\AlternativeUIEnabled=true"
     "WebUI\\RootFolder=/vuetorrent"
@@ -65,8 +57,6 @@ mkDotsModule {
     let
       inherit (args) lib pkgs;
 
-      # The config lives in a `qBittorrent` folder inside the /config mount, so
-      # the path is derived from the volume instead of being restated.
       configMount = lib.findFirst (
         v: lib.hasSuffix ":/config" v || lib.hasSuffix ":/config:ro" v
       ) null cfg.volumes;
@@ -109,7 +99,6 @@ mkDotsModule {
           wantedBy = [ "multi-user.target" ];
           after = [ "docker-${cfg.name}.service" ];
           wants = [ "docker-${cfg.name}.service" ];
-          # Re-run whenever the secret store is re-materialised (a secret edit).
           partOf = [ "secretspec.service" ];
           path = [
             pkgs.python3

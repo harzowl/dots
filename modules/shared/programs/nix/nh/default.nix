@@ -1,7 +1,3 @@
-# nh, defined once. Both NixOS and home-manager expose `programs.nh`, so the same
-# definition drives either target. Ported from nix-dotfiles, including the
-# `patches.nerd-font-icons` overlay that swaps nix-output-monitor's glyphs for
-# Nerd Font codepoints (on by default).
 {
   target,
   root ? [
@@ -12,8 +8,6 @@
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
 
-  # Replace nix-output-monitor's unicode glyphs with Nerd Font codepoints so they
-  # render in a patched font. Ported verbatim from nix-dotfiles.
   nomOverlay = args: _final: prev: {
     nix-output-monitor = prev.nix-output-monitor.overrideAttrs (old: {
       postPatch = (old.postPatch or "") + ''

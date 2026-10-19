@@ -1,6 +1,3 @@
-# zoxide — a smarter `cd` that learns the directories you visit. home-manager
-# ships `programs.zoxide`, so the home target uses it (with shell integration);
-# the system target just installs the package.
 {
   target,
   root ? [

@@ -1,13 +1,3 @@
-# naviscout — a catalogue discovery proxy that sits directly in front of
-# Navidrome.
-#
-# The native unit, its sandbox and the typed upstream/data/cache options live in
-# naviscout's own flake module (`nixosModules.default`), which the consuming
-# flake passes in as the `naviscout` special argument. This module only composes
-# that module: it forwards the small set of decisions a host actually makes and
-# offers `extraEnv` for everything else, so naviscout's unit is not restated
-# here.
-#
 # Secrets never enter the Nix store. `secretEnv` maps a `NAVISCOUT_*` name to a
 # neutral key found in `environmentFiles`, and a oneshot unit writes the
 # prefixed dotenv systemd reads. The source files stay the consumer's.
@@ -25,9 +15,6 @@ mkDotsModule {
   ];
   description = "naviscout catalogue discovery proxy in front of Navidrome";
 
-  # naviscout's module declares `services.naviscout`; import it only when the
-  # consumer supplied the flake, so the rest of the tree still evaluates
-  # without it.
   imports =
     args:
     args.lib.optional (args ? naviscout && args.naviscout != null) args.naviscout.nixosModules.default;
@@ -35,8 +22,6 @@ mkDotsModule {
   options =
     { lib, ... }:
     let
-      # An option left at `null` keeps naviscout's own default; this module
-      # declares no host path or service value of its own.
       inherited =
         type: description:
         lib.mkOption {
@@ -181,8 +166,6 @@ mkDotsModule {
         else
           toString value;
 
-      # Forward an option only when the host set it, so naviscout's module keeps
-      # its own default otherwise.
       whenSet =
         name: value:
         lib.optionalAttrs (value != null) {

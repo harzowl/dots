@@ -1,20 +1,3 @@
-# Keycloak — single sign-on for the services that need accounts.
-#
-# Runs two OCI containers:
-#
-#   * `keycloak-db` — PostgreSQL, loopback only, `trust` auth (its only peer is
-#     the Keycloak container on the same host), so no DB password is stored.
-#   * `keycloak`   — Keycloak on the host network, so it reaches that loopback
-#     database and binds the public port the front proxy targets.
-#
-# The realm is *generated* by the consumer from the services that declare an
-# `sso` block and passed as `realm` here. It is seeded with `--import-realm` on
-# first boot, and reconciled on every activation by `keycloak-reconcile` (Admin
-# API), so later edits to that realm take effect without recreating it.
-# `${VAR}` placeholders in the realm are resolved from the environment (the
-# secretspec env file), keeping client secrets out of the store. `--optimized`
-# is not used: the stock image is not built for our build-time options, so
-# `start` runs its implicit build.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
@@ -123,10 +106,6 @@ mkDotsModule {
       hostname = if cfg.hostname != null then cfg.hostname else "auth.${domain}";
       inherit (cfg) realm;
 
-      # `userProfile`, `defaultRequiredActions` and `defaultRoles` are not fields
-      # of Keycloak's realm representation (the live realm gets them from the
-      # reconcile, below) — keep them out of the imported JSON so a fresh
-      # `--import-realm` never sees an unknown field.
       realmJson = (pkgs.formats.json { }).generate "realm.json" (
         lib.removeAttrs realm [
           "userProfile"
@@ -136,17 +115,12 @@ mkDotsModule {
         ]
       );
 
-      # What `keycloak-reconcile` upserts into the existing realm.
       partialJson = (pkgs.formats.json { }).generate "realm-partial.json" {
         ifResourceExists = "OVERWRITE";
         roles = realm.roles or { };
         clients = realm.clients or [ ];
       };
 
-      # Client roles to grant a service-account client's service account (e.g.
-      # `realm-management:view-users` for a read-only directory reader). Not a
-      # realm-representation field, and `partialImport` cannot carry it, so the
-      # reconcile applies it: `[{ clientId; client; roles = [ … ]; }]`.
       serviceAccountRoles = realm.serviceAccountRoles or [ ];
       serviceAccountsJson =
         if serviceAccountRoles != [ ] then
@@ -154,10 +128,6 @@ mkDotsModule {
         else
           null;
 
-      # The realm's declarative user profile (which fields users may self-edit in
-      # the Account Console). `partialImport` does not carry it, so the reconcile
-      # applies it separately with `kcadm update users/profile`. Only generated
-      # when the consumer defines one, so we never wipe a profile with `{}`.
       userProfile = realm.userProfile or null;
       profileJson =
         if userProfile != null then
@@ -167,9 +137,6 @@ mkDotsModule {
 
       smtp = realm.smtpServer or { };
 
-      # The realm's display name, mail sender names, account theme and login
-      # rule are realm fields, not part of the client/role partial import, so the
-      # reconcile applies them with a plain `kcadm update realms/<realm>`.
       realmUpdate =
         let
           displayFlag = lib.optionalString (
@@ -178,15 +145,9 @@ mkDotsModule {
           smtpFlags = lib.concatMapStrings (k: "-s 'smtpServer.${k}=${toString smtp.${k}}' ") (
             lib.attrNames smtp
           );
-          # A realm field, so a `partialImport` never carries it and a Keycloak
-          # restart does not re-import an existing realm: without this update the
-          # account theme would only ever apply on the realm's first import.
           accountThemeFlag = lib.optionalString (
             (realm.accountTheme or null) != null
           ) "-s 'accountTheme=${realm.accountTheme}' ";
-          # A realm field too: without this update an existing realm keeps
-          # whatever it was first imported with, so a login could stay forced to
-          # an email address after the declaration changes.
           emailAsUsernameFlag = lib.optionalString (
             (realm.registrationEmailAsUsername or null) != null
           ) "-s 'registrationEmailAsUsername=${lib.boolToString realm.registrationEmailAsUsername}' ";
@@ -254,7 +215,6 @@ mkDotsModule {
           "start"
           "--import-realm"
         ];
-        # Host networking: reach the loopback Postgres and bind `cfg.port`.
         extraOptions = [ "--network=host" ];
         inherit (cfg) environmentFiles;
         volumes = [
@@ -301,10 +261,6 @@ mkDotsModule {
             script = reconcile;
           };
 
-          # A deploy restarts Keycloak (its realm/config mounts change), and a
-          # realm client isn't live until this reconcile runs — so retry often
-          # (the script is cheap and exits immediately when Keycloak isn't up yet)
-          # rather than letting a new client wait up to 15 minutes.
           timers.keycloak-reconcile = {
             wantedBy = [ "timers.target" ];
             timerConfig = {

@@ -1,5 +1,3 @@
-# bat, defined once. home-manager ships `programs.bat` (its config file lands at
-# `~/.config/bat/config`); the system target installs the package.
 {
   target,
   root ? [

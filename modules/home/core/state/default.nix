@@ -17,7 +17,5 @@ in
     }
   );
 
-  # mkDefault: both the NixOS-module path and standalone homeConfigurations get
-  # it; a flake can still override with home.stateVersion / dots.home.stateVersion.
   config.home.stateVersion = lib.mkDefault (lib.getAttrFromPath path config);
 }

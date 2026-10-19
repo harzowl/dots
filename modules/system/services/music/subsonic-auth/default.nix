@@ -1,45 +1,3 @@
-# subsonic-auth — a small reverse proxy that lets *native* Subsonic clients
-# authenticate to Navidrome with their **Keycloak** credentials.
-#
-# Navidrome has no native OIDC, so the browser client (Feishin) is gated by
-# oauth2-proxy. Native clients (Symfonium, play:Sub, …) can't do the browser
-# flow, so this shim stands in front of the Navidrome API: it takes the client's
-# credential (HTTP Basic, or Subsonic `u`/`p` — `p` may be `enc:<hex>`),
-# validates it against a Keycloak **personal access token** (the PAT SPI's
-# `/personal-access-token/auth` endpoint, HTTP Basic `user:PAT`), and on success
-# proxies to Navidrome with a single trusted identity header.
-#
-# A raw `t`/`s` (md5) credential cannot be checked against a Keycloak PAT
-# directly — Keycloak stores PATs hashed. Instead the shim keeps a reversible,
-# AES-256-GCM-encrypted copy of each user's PATs under `stateDir`: whenever a
-# plaintext/Basic credential validates, the PAT is recorded, and an md5
-# `t = md5(password + s)` is checked against those recorded PATs. A background
-# loop re-checks every stored PAT against the PAT SPI, so revoking a PAT in
-# Keycloak eventually kills md5 on it. Without the store key the store is
-# disabled and an md5 answers Subsonic error 41 ("token auth unsupported") over
-# HTTP 200, in the format the client asked for (`f`; XML is the default), which
-# is the signal a client that computes the md5 keys on to retry with the
-# credential in plaintext `p` instead. Positive validations are cached briefly
-# (keyed by the sha256 of `user\x00token`; the plaintext is never stored) so
-# polling/streaming does not hit Keycloak per request.
-#
-# Native API clients that expect Navidrome's own login — desktop Feishin's
-# "Navidrome" server type does `POST /auth/login` and then sends
-# `X-Nd-Authorization: Bearer <token>` on `/api/*` (and `t=<token>` on `/rest`)
-# — cannot use a PAT as a Navidrome password. The shim answers `/auth/login`
-# itself, validating the JSON body's password as a Keycloak PAT, and returns a
-# short-lived **signed** token as both `subsonicToken` and `token`. The raw PAT
-# is never handed back, so it cannot leak through a URL, a client store or a log
-# line; the signed token is stateless (it survives a shim restart until it
-# expires) and is bound to the identity and an audience. The signing key comes
-# from `environmentFiles` (the secretspec env file), never from `settings`.
-#
-# The container runs the statically linked binary bind-mounted into a stock
-# `alpine` image (no custom image build). It joins a user-defined network with a
-# fixed IP so Navidrome can trust exactly that address, and relies on the front
-# proxy to only route API paths here; it strips every client-supplied identity
-# header itself regardless. A `routes` entry sends a subpath to a different
-# upstream (e.g. `/rest` to a discovery proxy), matched by longest path prefix.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
@@ -190,9 +148,7 @@ mkDotsModule {
     in
     mkDockerService.config {
       spec = cfg // {
-        # Listen on the same port that is published 1:1 on the host.
         ports = [ cfg.port ];
-        # Run the store binary directly; alpine has no entrypoint of its own.
         entrypoint = "/usr/local/bin/subsonic-auth";
         volumes = [
           "${binary}/bin/subsonic-auth:/usr/local/bin/subsonic-auth:ro"

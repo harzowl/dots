@@ -1,16 +1,3 @@
-# A reusable declarative container SERVICE, shaped like a native NixOS service.
-# It exports two pieces a service module reuses directly (so the service's own
-# options ARE the container's — no `container` wrapper):
-#
-#   options = mkDockerService.options { inherit lib; defaults = { … }; };
-#   toConfig = args: cfg: mkDockerService.config cfg args;
-#
-# `options` returns the option declarations (name, image, backend, ports,
-# volumes, settings, cmd, extraOptions, openFirewall), with `defaults` folded in.
-# The image's environment variables are set through `settings` with camelCase
-# keys, mapped to the upper-snake env vars the container expects
-# (`someKey` -> `SOME_KEY`, `maxPlayers` -> `MAX_PLAYERS`). Enabling a service
-# also turns the backend on for the host (docker by default).
 {
   options =
     {
@@ -202,11 +189,6 @@
       };
     };
 
-  # The option-derived wiring a container needs — the `--network`/`--ip` run
-  # args, the `after`/`requires` unit list (`dependsOn` plus a user-defined
-  # network's unit), and that network's creating unit. Exported so a module that
-  # builds its own container (the oauth2-proxy gates) reuses the same ordering
-  # instead of re-implementing it.
   ordering =
     {
       lib,
@@ -235,7 +217,6 @@
           network.ip
         ]
       );
-      # Both `after` and `requires` are this list.
       inherit units;
       networkUnit = lib.optionalAttrs managedNetwork {
         "docker-network-${network.name}" = {
@@ -264,14 +245,10 @@
     }:
     { lib, pkgs, ... }:
     let
-      # Merge the service's default settings with the user's (an option default
-      # does not merge with a partial definition).
       settings = (defaults.settings or { }) // spec.settings;
 
-      # camelCase -> UPPER_SNAKE (someKey -> SOME_KEY, maxPlayers -> MAX_PLAYERS).
       envKey = import ./camelToUpperSnake.nix { inherit lib; };
 
-      # Values -> env strings (bool/number/string/list).
       envValue =
         v:
         if lib.isBool v then
@@ -288,8 +265,6 @@
         }
       );
 
-      # "container", "host:container" or "ip:host:container" -> the host port
-      # (for the firewall); the last segment is always the container port.
       hostPort =
         p:
         let
@@ -297,12 +272,8 @@
         in
         lib.toInt (lib.removeSuffix "/udp" (lib.elemAt parts (lib.max 0 (lib.length parts - 2))));
 
-      # The declared network, if any: the container joins it and starts after it.
       network = spec.network or null;
 
-      # Only a *user-defined* network gets a unit to create and wait for; the
-      # pre-defined `host`/`none`/`bridge` ones must not be `docker network
-      # create`d.
       managedNetwork =
         network != null
         && !(builtins.elem network.name [
@@ -311,10 +282,6 @@
           "bridge"
         ]);
 
-      # `dependsOn` -> systemd unit names. A bare service name is this backend's
-      # container unit (`navidrome` -> `docker-navidrome.service`); an entry that
-      # already ends in `.service` is taken verbatim. The declared network is
-      # always appended so the container waits for it.
       dependsOnUnits =
         map (d: if lib.hasSuffix ".service" d then d else "${spec.backend}-${d}.service") (
           spec.dependsOn or [ ]
@@ -334,7 +301,6 @@
               cmd
               environmentFiles
               ;
-            # Join the declared network (with its static IP) if set.
             extraOptions =
               spec.extraOptions
               ++ lib.optionals (network != null) (
@@ -371,14 +337,6 @@
       };
 
       systemd = {
-        # Restart the container when a runtime env file's *contents* change.
-        #
-        # NixOS change-detection only reacts to unit *definitions*, never to files
-        # a unit merely references — and `environmentFiles` live in /run (absent at
-        # build time), so `restartTriggers` cannot watch them. Each such file gets
-        # a path unit that, when the file is written (e.g. a rotated secret),
-        # triggers a oneshot which restarts the container. A path activation only
-        # *starts* an inactive unit, hence the explicit restart.
         paths = lib.listToAttrs (
           lib.imap0 (
             i: file:
@@ -405,24 +363,18 @@
             ) spec.environmentFiles
           )
           // lib.optionalAttrs (dependsOnUnits != [ ]) {
-            # Start after (and stay bound to) whatever the service depends on.
             "${spec.backend}-${spec.name}" = {
               after = dependsOnUnits;
               requires = dependsOnUnits;
             };
           }
           // {
-            # A container that keeps exiting must not loop forever: bound the
-            # restarts so the unit fails and the activation reports it. `mkDefault`
-            # so a consumer (e.g. the gates) can opt out.
             "${spec.backend}-${spec.name}" = {
               startLimitBurst = lib.mkDefault (spec.startLimitBurst or 5);
               startLimitIntervalSec = lib.mkDefault (spec.startLimitIntervalSec or 60);
             };
           }
           // lib.optionalAttrs managedNetwork {
-            # Create the user-defined network once (idempotent); every service that
-            # names it declares the same unit, which the module system merges.
             "docker-network-${network.name}" = {
               description = "Create the `${network.name}` docker network";
               after = [ "docker.service" ];

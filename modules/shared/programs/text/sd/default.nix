@@ -1,5 +1,3 @@
-# sd, defined once. sd has no config file, so `settings` become default flags on
-# an `sd` wrapper that execs the real binary (see lib/mkCliWrapper.nix).
 {
   target,
   root ? [

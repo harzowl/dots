@@ -1,12 +1,3 @@
-# Feishin — a web client for Navidrome / Subsonic servers, run from the
-# `ghcr.io/jeffvli/feishin` image. It is a pure client-side SPA: all settings and
-# credentials live in the browser, so it has no volumes and holds no server state.
-# It listens on :9180.
-#
-# Published on the host **loopback only** and with `openFirewall = false`, so the
-# front proxy reaches it there and nothing else can. It is served behind the
-# Keycloak gate; the browser session is seeded by the edge (which answers
-# `/settings.js` itself), so no `SERVER_*` environment is set here.
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
