@@ -36,7 +36,7 @@ most of the list is "use the default and don't opt out".
    and the `Referer` header — into **every** vhost by default
    (`accessLogFormat`; opt out with `= null`, never a per-service opt-in).
    Suppress a component's own request log if it can print a query string (e.g.
-   oauth2-proxy's `/oauth2/callback`, via `oauth2ProxyExcludeLoggingPaths`).
+   oauth2-proxy's `/oauth2/callback`, via `excludeLoggingPaths`).
    Verify the generated config, not just that it evaluates.
 3. **Pass secrets in, never bake them in.** Secrets arrive through
    `environmentFiles`, systemd credentials or a mounted file — never as a module

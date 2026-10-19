@@ -28,6 +28,8 @@ let
   };
 
   envKey = camelToUpperSnake;
+  gateEnvKey =
+    k: envKey ("oauth2Proxy" + lib.toUpper (builtins.substring 0 1 k) + builtins.substring 1 (-1) k);
 
   envValue =
     v:
@@ -69,20 +71,20 @@ in
           environmentFiles
           ;
         extraOptions = g.extraOptions ++ (wire name g).networkArgs;
-        environment = lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) (
+        environment = lib.mapAttrs' (k: v: lib.nameValuePair (gateEnvKey k) (envValue v)) (
           {
-            oauth2ProxyHttpAddress = "0.0.0.0:${toString g.port}";
-            oauth2ProxyProvider = "keycloak-oidc";
-            oauth2ProxyOidcIssuerUrl = "https://auth.${config.dots.system.core.domain}/realms/${config.dots.system.core.realm}";
-            oauth2ProxyEmailDomains = "*";
-            oauth2ProxyInsecureOidcAllowUnverifiedEmail = true;
-            oauth2ProxyOidcEmailClaim = "preferred_username";
-            oauth2ProxyReverseProxy = true;
-            oauth2ProxySetXauthrequest = true;
-            oauth2ProxyWhitelistDomains = ".${config.dots.system.core.domain}";
-            oauth2ProxyCookieSecure = true;
-            oauth2ProxySkipProviderButton = true;
-            oauth2ProxyExcludeLoggingPaths = [ "/oauth2/callback" ];
+            httpAddress = "0.0.0.0:${toString g.port}";
+            provider = "keycloak-oidc";
+            oidcIssuerUrl = "https://auth.${config.dots.system.core.domain}/realms/${config.dots.system.core.realm}";
+            emailDomains = "*";
+            insecureOidcAllowUnverifiedEmail = true;
+            oidcEmailClaim = "preferred_username";
+            reverseProxy = true;
+            setXauthrequest = true;
+            whitelistDomains = ".${config.dots.system.core.domain}";
+            cookieSecure = true;
+            skipProviderButton = true;
+            excludeLoggingPaths = [ "/oauth2/callback" ];
           }
           // g.settings
         );
