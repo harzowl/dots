@@ -26,18 +26,24 @@ mkDotsModule {
 
       musicDir = lib.mkOption {
         type = lib.types.str;
-        description = "Directory beets organises the library into (`directory`).";
+        description = "Directory beets organises the library into.";
       };
 
       libraryDb = lib.mkOption {
         type = lib.types.str;
-        description = "Path to the SQLite library database (`library`).";
+        description = "Path to the SQLite library database.";
       };
 
       configFile = lib.mkOption {
         type = lib.types.str;
         default = "/etc/beets/config.yaml";
-        description = "Managed configuration path beets reads (under `/etc`).";
+        description = "Managed configuration path beets reads.";
+      };
+
+      settings = lib.mkOption {
+        inherit ((pkgs.formats.yaml { })) type;
+        default = { };
+        description = "beets configuration keys, merged over `directory` and `library`.";
       };
 
       package = lib.mkOption {
@@ -57,10 +63,11 @@ mkDotsModule {
         group = if cfg.group != null then cfg.group else "-";
       };
 
-      config = pkgs.writeText "beets-config.yaml" (
-        lib.replaceStrings [ "@MUSIC_DIR@" "@LIBRARY_DB@" ] [ cfg.musicDir cfg.libraryDb ] (
-          builtins.readFile ./config.yaml
-        )
+      config = (pkgs.formats.yaml { }).generate "beets-config.yaml" (
+        lib.recursiveUpdate {
+          directory = cfg.musicDir;
+          library = cfg.libraryDb;
+        } cfg.settings
       );
 
       beet = pkgs.writeShellScriptBin "beet" (
