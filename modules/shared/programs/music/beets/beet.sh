@@ -1,2 +1,3 @@
 export PATH=@FFMPEG@/bin:$PATH
+export PYTHONPATH=@PYTHONPATH@${PYTHONPATH:+:$PYTHONPATH}
 exec @PACKAGE@/bin/beet -c @CONFIG@ "$@"

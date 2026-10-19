@@ -75,6 +75,12 @@ mkDotsModule {
         description = "Source trees whose `beetsplug` directory is added to `pluginpath`.";
       };
 
+      pythonPackages = lib.mkOption {
+        type = lib.types.listOf lib.types.package;
+        default = [ ];
+        description = "Python packages the external plugins import, added to beets' `PYTHONPATH`.";
+      };
+
       package = lib.mkOption {
         type = lib.types.package;
         default = pkgs.beets;
@@ -123,7 +129,8 @@ mkDotsModule {
       runtimeConfig = "/run/beets/config.yaml";
       configPath = if cfg.secrets == { } then cfg.configFile else runtimeConfig;
 
-      python = pkgs.python3.withPackages (ps: [ ps.pyyaml ]);
+      python = pkgs.python3.withPackages (ps: [ ps.pyyaml ] ++ cfg.pythonPackages);
+      pythonPath = "${python}/${pkgs.python3.sitePackages}";
 
       secretArgs = lib.concatStrings (
         lib.mapAttrsToList (path: variable: " " + lib.escapeShellArg "${path}=${variable}") cfg.secrets
@@ -131,8 +138,8 @@ mkDotsModule {
 
       beet = pkgs.writeShellScriptBin "beet" (
         lib.replaceStrings
-          [ "@PACKAGE@" "@CONFIG@" "@FFMPEG@" ]
-          [ "${cfg.package}" (lib.escapeShellArg configPath) "${pkgs.ffmpeg}" ]
+          [ "@PACKAGE@" "@CONFIG@" "@FFMPEG@" "@PYTHONPATH@" ]
+          [ "${cfg.package}" (lib.escapeShellArg configPath) "${pkgs.ffmpeg}" pythonPath ]
           (builtins.readFile ./beet.sh)
       );
     in
