@@ -62,6 +62,13 @@ mkDotsModule {
         description = "beets configuration keys, merged over `directory` and `library`; a section with `enable = true` is listed in `plugins`.";
       };
 
+      extraPlugins = lib.mkOption {
+        type = lib.types.listOf lib.types.path;
+        default = [ ];
+        example = [ "/path/to/plugin.py" ];
+        description = "Python plugin files installed under /etc/beets/plugins and appended to `pluginpath`.";
+      };
+
       package = lib.mkOption {
         type = lib.types.package;
         default = pkgs.beets;
@@ -90,12 +97,19 @@ mkDotsModule {
         ) cfg.settings
       );
 
+      pluginDir = "/etc/beets/plugins";
+      pluginNames = map (plugin: baseNameOf (toString plugin)) cfg.extraPlugins;
+      userPluginPath = cfg.settings.pluginpath or [ ];
+
       config = (pkgs.formats.yaml { }).generate "beets-config.yaml" (
-        lib.recursiveUpdate {
+        (lib.recursiveUpdate {
           directory = cfg.musicDir;
           library = cfg.libraryDb;
           inherit plugins;
-        } (lib.filterAttrs (_: section: section != { }) sections)
+        } (lib.filterAttrs (_: section: section != { }) (removeAttrs sections [ "pluginpath" ])))
+        // lib.optionalAttrs (cfg.extraPlugins != [ ] || cfg.settings ? pluginpath) {
+          pluginpath = [ pluginDir ] ++ userPluginPath;
+        }
       );
 
       runtimeConfig = "/run/beets/config.yaml";
@@ -108,9 +122,10 @@ mkDotsModule {
       );
 
       beet = pkgs.writeShellScriptBin "beet" (
-        lib.replaceStrings [ "@PACKAGE@" "@CONFIG@" ] [ "${cfg.package}" (lib.escapeShellArg configPath) ] (
-          builtins.readFile ./beet.sh
-        )
+        lib.replaceStrings
+          [ "@PACKAGE@" "@CONFIG@" "@FFMPEG@" ]
+          [ "${cfg.package}" (lib.escapeShellArg configPath) "${pkgs.ffmpeg}" ]
+          (builtins.readFile ./beet.sh)
       );
     in
     {
@@ -123,10 +138,25 @@ mkDotsModule {
           assertion = cfg.secrets == { } || cfg.environmentFiles != [ ];
           message = "beets: `secrets` needs a non-empty `environmentFiles` to read the values from.";
         }
+        {
+          assertion = lib.all (plugin: lib.hasSuffix ".py" (baseNameOf (toString plugin))) cfg.extraPlugins;
+          message = "beets: every `extraPlugins` entry must be a `.py` file.";
+        }
+        {
+          assertion = builtins.length (lib.unique pluginNames) == builtins.length pluginNames;
+          message = "beets: `extraPlugins` entries must have distinct basenames.";
+        }
       ];
 
       environment = {
-        etc.${lib.removePrefix "/etc/" cfg.configFile}.source = config;
+        etc = {
+          ${lib.removePrefix "/etc/" cfg.configFile}.source = config;
+        }
+        // lib.listToAttrs (
+          map (
+            plugin: lib.nameValuePair "beets/plugins/${baseNameOf (toString plugin)}" { source = plugin; }
+          ) cfg.extraPlugins
+        );
         systemPackages = [ beet ];
       };
 
