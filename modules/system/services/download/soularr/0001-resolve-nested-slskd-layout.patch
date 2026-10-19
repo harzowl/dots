@@ -1,5 +1,5 @@
 diff --git a/soularr.py b/soularr.py
-index a0febb2..29d7609 100644
+index a0febb2..3464be3 100644
 --- a/soularr.py
 +++ b/soularr.py
 @@ -4,6 +4,7 @@ import argparse
@@ -10,7 +10,7 @@ index a0febb2..29d7609 100644
  import sys
  import time
  import shutil
-@@ -174,15 +175,98 @@ def sanitize_folder_name(folder_name):
+@@ -174,15 +175,111 @@ def sanitize_folder_name(folder_name):
      return valid_characters.strip()
  
  
@@ -64,6 +64,12 @@ index a0febb2..29d7609 100644
 +            if f" {title_key} " in f" {normalize_match_text(name)} ":
 +                candidates.append((os.path.join(root, name), contains_year(name, year)))
 +    if not candidates:
++        logger.warning(
++            "No album folder for %r below %s; falling back to the transfer path %s",
++            title,
++            user_dirs,
++            source_dir,
++        )
 +        return source_dir, False
 +
 +    def rank(candidate):
@@ -77,6 +83,13 @@ index a0febb2..29d7609 100644
 +        )
 +
 +    folder, year_matched = min(candidates, key=rank)
++    logger.info(
++        "Resolved album folder for %r (%s): %s%s",
++        title,
++        year,
++        folder,
++        "" if year_matched else " [title-only, year not found]",
++    )
 +    if not year_matched:
 +        logger.warning(
 +            "No folder for %r carried year %s below %s; using title-only match %s",
@@ -112,7 +125,7 @@ index a0febb2..29d7609 100644
          if os.path.exists(delete_dir):
              shutil.rmtree(delete_dir)
  
-@@ -440,6 +524,10 @@ def search_for_album(album):
+@@ -440,6 +537,10 @@ def search_for_album(album):
      else:
          query = artist_name + " " + album_title if config.getboolean("Search Settings", "album_prepend_artist", fallback=False) else album_title
  
@@ -123,7 +136,7 @@ index a0febb2..29d7609 100644
      original_query = query
      for word in search_blacklist:
          if word:
-@@ -778,21 +866,26 @@ def process_completed_album(album_data, failed_grab):
+@@ -778,21 +879,26 @@ def process_completed_album(album_data, failed_grab):
      if rename_download_folders is True:
          import_folder_name = sanitize_folder_name(album_data["artist"] + " - " + album_data["title"] + " (" + album_data["year"] + ")")
      else:
@@ -157,7 +170,7 @@ index a0febb2..29d7609 100644
          if "disk_no" in file and "disk_count" in file and file["disk_count"] > 1:
              filename = f"Disk {file['disk_no']} - {filename}"
          dst_file = os.path.join(import_folder_fullpath, filename)
-@@ -816,8 +909,8 @@ def process_completed_album(album_data, failed_grab):
+@@ -816,8 +922,8 @@ def process_completed_album(album_data, failed_grab):
              failed_grab.append(lidarr.get_album(album_data["album_id"]))
              return
      else:  # Only runs if all files are successfully moved
