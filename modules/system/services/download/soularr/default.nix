@@ -171,6 +171,7 @@ mkDotsModule {
       ++ map (path: "${path}=${envName path}") (lib.attrNames cfg.secretEnv);
 
       loop = pkgs.writeShellScript "soularr-loop" (builtins.readFile ./run-loop.sh);
+      renderer = pkgs.writeText "soularr-render-config.py" (builtins.readFile ./render-config.py);
     in
     {
       assertions = [
@@ -224,7 +225,7 @@ mkDotsModule {
               ExecStartPre = lib.escapeShellArgs (
                 [
                   "${pkgs.python3}/bin/python3"
-                  (toString ./render-config.py)
+                  (toString renderer)
                 ]
                 ++ renderArgs
               );
