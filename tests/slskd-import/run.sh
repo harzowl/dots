@@ -69,26 +69,28 @@ run_import() {
     --settle 0
 }
 
-cat >"$tmp/beet-duplicate" <<'EOF'
-#!/usr/bin/env bash
-echo "$@" >>"$BEET_LOG"
+bash_path=$(command -v bash)
+
+cat >"$tmp/beet-duplicate" <<EOF
+#!$bash_path
+echo "\$@" >>"\$BEET_LOG"
 echo "Skipping."
 exit 0
 EOF
 chmod +x "$tmp/beet-duplicate"
 
-cat >"$tmp/beet-import" <<'EOF'
-#!/usr/bin/env bash
-echo "$@" >>"$BEET_LOG"
-album=${!#}
-find "$album" -type f -name '*.flac' -exec mv -t "$IMPORTED_DIR" {} +
+cat >"$tmp/beet-import" <<EOF
+#!$bash_path
+echo "\$@" >>"\$BEET_LOG"
+album=\${!#}
+find "\$album" -type f -name '*.flac' -exec mv -t "\$IMPORTED_DIR" {} +
 exit 0
 EOF
 chmod +x "$tmp/beet-import"
 
-cat >"$tmp/beet-error" <<'EOF'
-#!/usr/bin/env bash
-echo "$@" >>"$BEET_LOG"
+cat >"$tmp/beet-error" <<EOF
+#!$bash_path
+echo "\$@" >>"\$BEET_LOG"
 echo "beet exploded" >&2
 exit 2
 EOF

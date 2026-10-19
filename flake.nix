@@ -174,6 +174,10 @@
             {
               nativeBuildInputs = [
                 pkgs.bash
+                pkgs.coreutils
+                pkgs.findutils
+                pkgs.gnugrep
+                pkgs.gnused
                 pkgs.python3
               ];
             }
