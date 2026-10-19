@@ -5,17 +5,27 @@ Each top-level directory under the complete tree is a Soulseek user. slskd
 mirrors the peer's path below `<user>/directories`, and incomplete downloads
 below the incomplete tree, where the `directories` segment is absent. The
 importer walks the completed trees, finds the directories that hold an album,
-and hands settled albums to `beet import`. Only an import that moved the audio
-out of the download tree is followed by sidecar cleanup and directory pruning.
+and hands settled albums to `beet import`.
+
+An album is attempted at most once: every outcome (imported, duplicate/skip or
+error) is recorded in a `.slskd-imported` marker inside the album directory, and
+a marked album is never handed to beets again. A successful import removes the
+sidecars and prunes the emptied directories; a duplicate or failed import is
+left in place. Audio is never deleted. Only an unusable complete root or a
+missing `beet` makes the run fail; per-album problems are logged and skipped.
 """
 
 import argparse
+import json
 import os
 import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+
+MARKER_NAME = ".slskd-imported"
 
 AUDIO_SUFFIXES = {
     ".aac",
@@ -66,11 +76,7 @@ def is_audio(name):
 
 
 def entries(path):
-    try:
-        return list(os.scandir(path))
-    except OSError as error:
-        print(f"skip unreadable {path}: {error}", file=sys.stderr)
-        return []
+    return list(os.scandir(path))
 
 
 def has_audio_directly(path):
@@ -135,6 +141,35 @@ def incomplete_copy(complete, album, incomplete):
     return any(candidate.exists() for candidate in candidates)
 
 
+def marker_outcome(album):
+    try:
+        record = json.loads((album / MARKER_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "handled"
+    return record.get("outcome", "handled")
+
+
+def write_marker(album, outcome, detail=None):
+    marker = album / MARKER_NAME
+    record = {
+        "outcome": outcome,
+        "time": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    }
+    if detail:
+        record["detail"] = detail
+
+    temporary = marker.with_name(f"{MARKER_NAME}.tmp")
+    try:
+        temporary.write_text(json.dumps(record, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(temporary, marker)
+    except OSError as error:
+        print(f"could not write {marker}: {error}", file=sys.stderr)
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+
+
 def remove_sidecars(album):
     for dirpath, dirnames, filenames in os.walk(album, followlinks=False):
         dirnames[:] = [name for name in dirnames if not name.startswith(".")]
@@ -165,23 +200,36 @@ def prune(album, complete):
 
 
 def import_album(album, beet, complete, settle):
+    if (album / MARKER_NAME).exists():
+        print(f"skip {album}: already handled ({marker_outcome(album)})")
+        return
+
     newest = newest_mtime(album)
     if newest and time.time() - newest < settle:
-        return False
+        return
 
     print(f"importing {album}", flush=True)
     result = subprocess.run([beet, "import", "-m", "-q", str(album)])
     if result.returncode != 0:
         print(f"beet import failed with {result.returncode}: {album}", file=sys.stderr)
-        return True
+        write_marker(album, "error", f"beet exit {result.returncode}")
+        return
 
     if has_audio(album):
-        print(f"beet import left audio in place: {album}", file=sys.stderr)
-        return True
+        print(
+            f"beet import left audio in place (duplicate or skipped): {album}",
+            file=sys.stderr,
+        )
+        write_marker(album, "duplicate", "audio left in place")
+        return
 
+    write_marker(album, "imported")
     remove_sidecars(album)
+    try:
+        (album / MARKER_NAME).unlink()
+    except OSError as error:
+        print(f"could not remove {album / MARKER_NAME}: {error}", file=sys.stderr)
     prune(album, complete)
-    return False
 
 
 def main():
@@ -194,32 +242,48 @@ def main():
 
     if not args.complete.is_dir():
         sys.exit(f"complete directory not found: {args.complete}")
+    if not os.path.isfile(args.beet) or not os.access(args.beet, os.X_OK):
+        sys.exit(f"beet is not executable: {args.beet}")
+
+    try:
+        top_entries = sorted(os.scandir(args.complete), key=lambda item: item.name)
+    except OSError as error:
+        sys.exit(f"complete directory is unreadable: {args.complete}: {error}")
 
     skip = {"incomplete", "downloads", args.incomplete.name}
-    failed = False
 
-    for entry in sorted(os.scandir(args.complete), key=lambda item: item.name):
+    for entry in top_entries:
         if entry.name.startswith(".") or entry.name in skip:
             continue
         if not entry.is_dir(follow_symlinks=False):
             continue
 
         top = Path(entry.path)
-        if has_audio_directly(top):
-            print(f"skip legacy {top}: audio directly under the user directory")
-            continue
-
-        directories = top / "directories"
-        if not directories.is_dir():
-            continue
-
-        for album in sorted(album_roots(directories)):
-            if incomplete_copy(args.complete, album, args.incomplete):
-                print(f"skip incomplete {album}")
+        try:
+            if has_audio_directly(top):
+                print(f"skip legacy {top}: audio directly under the user directory")
                 continue
-            failed = import_album(album, args.beet, args.complete, args.settle) or failed
 
-    return 1 if failed else 0
+            directories = top / "directories"
+            if not directories.is_dir():
+                continue
+
+            roots = sorted(album_roots(directories))
+        except OSError as error:
+            print(f"skip unreadable {top}: {error}", file=sys.stderr)
+            continue
+
+        for album in roots:
+            try:
+                if incomplete_copy(args.complete, album, args.incomplete):
+                    print(f"skip incomplete {album}")
+                    continue
+                import_album(album, args.beet, args.complete, args.settle)
+            except OSError as error:
+                print(f"skip {album}: {error}", file=sys.stderr)
+                write_marker(album, "error", str(error))
+
+    return 0
 
 
 if __name__ == "__main__":

@@ -165,6 +165,22 @@
               bash ${self}/tests/navidrome-sync/run.sh
               touch "$out"
             '';
+
+        slskd-import =
+          let
+            pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+          in
+          pkgs.runCommand "slskd-import"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.python3
+              ];
+            }
+            ''
+              bash ${self}/tests/slskd-import/run.sh
+              touch "$out"
+            '';
       };
     };
 }
