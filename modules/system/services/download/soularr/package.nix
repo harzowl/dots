@@ -55,6 +55,8 @@ stdenv.mkDerivation rec {
     hash = "sha256-a/HufH1y5QOX0jJolz8oVXZvOlCzg41ab+S35ZsWhWk=";
   };
 
+  patches = [ ./0001-resolve-nested-slskd-layout.patch ];
+
   installPhase = ''
     runHook preInstall
     mkdir -p "$out/share/soularr" "$out/bin"
