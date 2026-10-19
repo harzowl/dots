@@ -245,6 +245,7 @@ mkDotsModule {
                 "/run/soularr"
                 "--var-dir"
                 cfg.stateDir
+                "--no-lock-file"
               ];
               Restart = "on-failure";
               RestartSec = "30s";
