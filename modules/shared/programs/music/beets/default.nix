@@ -40,6 +40,22 @@ mkDotsModule {
         description = "Managed configuration path beets reads.";
       };
 
+      secrets = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = { };
+        example = {
+          "fetchart.fanarttv_key" = "FANARTTV_KEY";
+        };
+        description = "Dotted beets config keys whose values are read from environment variables at runtime, never from the store.";
+      };
+
+      environmentFiles = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "/run/secretspec/env" ];
+        description = "Environment files the runtime config unit reads the secret values from.";
+      };
+
       settings = lib.mkOption {
         inherit ((pkgs.formats.yaml { })) type;
         default = { };
@@ -82,11 +98,19 @@ mkDotsModule {
         } (lib.filterAttrs (_: section: section != { }) sections)
       );
 
+      runtimeConfig = "/run/beets/config.yaml";
+      configPath = if cfg.secrets == { } then cfg.configFile else runtimeConfig;
+
+      python = pkgs.python3.withPackages (ps: [ ps.pyyaml ]);
+
+      secretArgs = lib.concatStrings (
+        lib.mapAttrsToList (path: variable: " " + lib.escapeShellArg "${path}=${variable}") cfg.secrets
+      );
+
       beet = pkgs.writeShellScriptBin "beet" (
-        lib.replaceStrings
-          [ "@PACKAGE@" "@CONFIG@" ]
-          [ "${cfg.package}" (lib.escapeShellArg cfg.configFile) ]
-          (builtins.readFile ./beet.sh)
+        lib.replaceStrings [ "@PACKAGE@" "@CONFIG@" ] [ "${cfg.package}" (lib.escapeShellArg configPath) ] (
+          builtins.readFile ./beet.sh
+        )
       );
     in
     {
@@ -95,6 +119,10 @@ mkDotsModule {
           assertion = !(cfg.settings ? plugins);
           message = "beets: set `settings.<plugin>.enable`, not `settings.plugins`; the module owns the plugin list.";
         }
+        {
+          assertion = cfg.secrets == { } || cfg.environmentFiles != [ ];
+          message = "beets: `secrets` needs a non-empty `environmentFiles` to read the values from.";
+        }
       ];
 
       environment = {
@@ -102,9 +130,37 @@ mkDotsModule {
         systemPackages = [ beet ];
       };
 
-      systemd.tmpfiles.rules = [
-        "d ${dirOf cfg.configFile} 0755 ${owner.user} ${owner.group} -"
-        "d ${dirOf cfg.libraryDb} 0755 ${owner.user} ${owner.group} -"
-      ];
+      systemd = {
+        services = lib.mkIf (cfg.secrets != { }) {
+          beets-config = {
+            description = "Render the beets config with runtime secrets";
+            wantedBy = [ "multi-user.target" ];
+            after = [ "secretspec.service" ];
+            wants = [ "secretspec.service" ];
+            partOf = [ "secretspec.service" ];
+            path = [ python ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              RuntimeDirectory = "beets";
+              RuntimeDirectoryMode = "0700";
+              EnvironmentFile = cfg.environmentFiles;
+            }
+            // lib.optionalAttrs (cfg.user != null) { User = cfg.user; }
+            // lib.optionalAttrs (cfg.group != null) { Group = cfg.group; };
+            script = ''
+              set -eu
+              exec ${python}/bin/python3 ${./render-config.py} \
+                ${lib.escapeShellArg config} \
+                ${lib.escapeShellArg runtimeConfig}${secretArgs}
+            '';
+          };
+        };
+
+        tmpfiles.rules = [
+          "d ${dirOf cfg.configFile} 0755 ${owner.user} ${owner.group} -"
+          "d ${dirOf cfg.libraryDb} 0755 ${owner.user} ${owner.group} -"
+        ];
+      };
     };
 }
