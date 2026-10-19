@@ -69,6 +69,13 @@ mkDotsModule {
         description = "Python plugin files installed under /etc/beets/plugins and appended to `pluginpath`.";
       };
 
+      pluginData = lib.mkOption {
+        type = lib.types.listOf lib.types.path;
+        default = [ ];
+        example = [ "/path/to/descriptors.txt" ];
+        description = "Data files installed beside `extraPlugins` under /etc/beets/plugins.";
+      };
+
       externalPlugins = lib.mkOption {
         type = lib.types.listOf lib.types.path;
         default = [ ];
@@ -119,7 +126,8 @@ mkDotsModule {
       );
 
       pluginDir = "/etc/beets/plugins";
-      pluginNames = map (plugin: baseNameOf (toString plugin)) cfg.extraPlugins;
+      installedFiles = cfg.extraPlugins ++ cfg.pluginData;
+      installedNames = map (file: baseNameOf (toString file)) installedFiles;
       externalPluginPaths = map (plugin: "${plugin}/beetsplug") cfg.externalPlugins;
       userPluginPath = cfg.settings.pluginpath or [ ];
       hasPluginPath = cfg.extraPlugins != [ ] || cfg.externalPlugins != [ ] || cfg.settings ? pluginpath;
@@ -167,8 +175,8 @@ mkDotsModule {
           message = "beets: every `extraPlugins` entry must be a `.py` file.";
         }
         {
-          assertion = builtins.length (lib.unique pluginNames) == builtins.length pluginNames;
-          message = "beets: `extraPlugins` entries must have distinct basenames.";
+          assertion = builtins.length (lib.unique installedNames) == builtins.length installedNames;
+          message = "beets: `extraPlugins` and `pluginData` entries must have distinct basenames.";
         }
         {
           assertion = lib.all (
@@ -184,8 +192,8 @@ mkDotsModule {
         }
         // lib.listToAttrs (
           map (
-            plugin: lib.nameValuePair "beets/plugins/${baseNameOf (toString plugin)}" { source = plugin; }
-          ) cfg.extraPlugins
+            file: lib.nameValuePair "beets/plugins/${baseNameOf (toString file)}" { source = file; }
+          ) installedFiles
         );
         systemPackages = [ beet ];
       };
