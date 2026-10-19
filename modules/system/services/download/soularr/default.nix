@@ -212,6 +212,15 @@ mkDotsModule {
               RuntimeDirectory = "soularr";
               RuntimeDirectoryMode = "0700";
               EnvironmentFile = [ remap.environmentFile ];
+              NoNewPrivileges = true;
+              PrivateTmp = true;
+              ProtectHome = true;
+              ProtectSystem = "strict";
+              ReadWritePaths = [
+                cfg.downloadDir
+                cfg.stateDir
+              ]
+              ++ lib.optional (cfg.logDir != null) cfg.logDir;
               ExecStartPre = lib.escapeShellArgs (
                 [
                   "${pkgs.python3}/bin/python3"
