@@ -1,6 +1,5 @@
 {
   imports = [
-    ./beets
     ./feishin
     ./navidrome
     ./naviscout

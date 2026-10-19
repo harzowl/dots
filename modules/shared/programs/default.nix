@@ -9,6 +9,7 @@
   imports = [
     (import ./files { inherit target root; })
     (import ./monitoring { inherit target root; })
+    (import ./music { inherit target root; })
     (import ./nix { inherit target root; })
     (import ./search { inherit target root; })
     (import ./shell { inherit target root; })

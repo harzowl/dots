@@ -3,8 +3,7 @@ let
 in
 mkDotsModule {
   optionPath = [
-    "system"
-    "services"
+    "programs"
     "music"
     "beets"
   ];
