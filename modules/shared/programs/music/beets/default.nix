@@ -93,6 +93,12 @@ mkDotsModule {
         default = pkgs.beets;
         description = "beets package to use.";
       };
+
+      wrapper = lib.mkOption {
+        type = lib.types.package;
+        default = pkgs.beets;
+        description = "Generated `beet` wrapper carrying the runtime config and plugin environment.";
+      };
     };
 
   toConfig =
@@ -161,6 +167,8 @@ mkDotsModule {
       );
     in
     {
+      dots.programs.music.beets.wrapper = beet;
+
       assertions = [
         {
           assertion = !(cfg.settings ? plugins);
