@@ -7,5 +7,6 @@
     ./radarr
     ./slskd
     ./sonarr
+    ./soularr
   ];
 }
