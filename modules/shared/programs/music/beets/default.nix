@@ -43,7 +43,7 @@ mkDotsModule {
       settings = lib.mkOption {
         inherit ((pkgs.formats.yaml { })) type;
         default = { };
-        description = "beets configuration keys, merged over `directory` and `library`.";
+        description = "beets configuration keys, merged over `directory` and `library`; a section with `enable = true` is listed in `plugins`.";
       };
 
       package = lib.mkOption {
@@ -63,11 +63,23 @@ mkDotsModule {
         group = if cfg.group != null then cfg.group else "-";
       };
 
+      sections = lib.mapAttrs (
+        _: section:
+        if lib.isAttrs section && section ? enable then removeAttrs section [ "enable" ] else section
+      ) cfg.settings;
+
+      plugins = lib.attrNames (
+        lib.filterAttrs (
+          _: section: lib.isAttrs section && section ? enable && section.enable == true
+        ) cfg.settings
+      );
+
       config = (pkgs.formats.yaml { }).generate "beets-config.yaml" (
         lib.recursiveUpdate {
           directory = cfg.musicDir;
           library = cfg.libraryDb;
-        } cfg.settings
+          inherit plugins;
+        } (lib.filterAttrs (_: section: section != { }) sections)
       );
 
       beet = pkgs.writeShellScriptBin "beet" (
@@ -78,6 +90,13 @@ mkDotsModule {
       );
     in
     {
+      assertions = [
+        {
+          assertion = !(cfg.settings ? plugins);
+          message = "beets: set `settings.<plugin>.enable`, not `settings.plugins`; the module owns the plugin list.";
+        }
+      ];
+
       environment = {
         etc.${lib.removePrefix "/etc/" cfg.configFile}.source = config;
         systemPackages = [ beet ];
