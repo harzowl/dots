@@ -69,6 +69,12 @@ mkDotsModule {
         description = "Python plugin files installed under /etc/beets/plugins and appended to `pluginpath`.";
       };
 
+      externalPlugins = lib.mkOption {
+        type = lib.types.listOf lib.types.path;
+        default = [ ];
+        description = "Source trees whose `beetsplug` directory is added to `pluginpath`.";
+      };
+
       package = lib.mkOption {
         type = lib.types.package;
         default = pkgs.beets;
@@ -99,7 +105,9 @@ mkDotsModule {
 
       pluginDir = "/etc/beets/plugins";
       pluginNames = map (plugin: baseNameOf (toString plugin)) cfg.extraPlugins;
+      externalPluginPaths = map (plugin: "${plugin}/beetsplug") cfg.externalPlugins;
       userPluginPath = cfg.settings.pluginpath or [ ];
+      hasPluginPath = cfg.extraPlugins != [ ] || cfg.externalPlugins != [ ] || cfg.settings ? pluginpath;
 
       config = (pkgs.formats.yaml { }).generate "beets-config.yaml" (
         (lib.recursiveUpdate {
@@ -107,8 +115,8 @@ mkDotsModule {
           library = cfg.libraryDb;
           inherit plugins;
         } (lib.filterAttrs (_: section: section != { }) (removeAttrs sections [ "pluginpath" ])))
-        // lib.optionalAttrs (cfg.extraPlugins != [ ] || cfg.settings ? pluginpath) {
-          pluginpath = [ pluginDir ] ++ userPluginPath;
+        // lib.optionalAttrs hasPluginPath {
+          pluginpath = [ pluginDir ] ++ externalPluginPaths ++ userPluginPath;
         }
       );
 
@@ -145,6 +153,12 @@ mkDotsModule {
         {
           assertion = builtins.length (lib.unique pluginNames) == builtins.length pluginNames;
           message = "beets: `extraPlugins` entries must have distinct basenames.";
+        }
+        {
+          assertion = lib.all (
+            plugin: !(builtins.pathExists "${plugin}") || builtins.pathExists "${plugin}/beetsplug"
+          ) cfg.externalPlugins;
+          message = "beets: every `externalPlugins` entry must contain a `beetsplug` directory.";
         }
       ];
 
