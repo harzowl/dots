@@ -3,9 +3,11 @@
 
   systemd.services.stalwart = {
     wantedBy = [ "multi-user.target" ];
+    enable = true;
   };
 
   systemd.services.stalwart-provision = {
     after = [ "stalwart.service" ];
+    enable = true;
   };
 }

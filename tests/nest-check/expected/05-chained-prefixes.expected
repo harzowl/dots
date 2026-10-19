@@ -1,2 +1,2 @@
 cases/05-chained-prefixes.case:4: repeated attribute path 'systemd'; nest it once
-cases/05-chained-prefixes.case:8: repeated attribute path 'systemd.services'; nest it once
+cases/05-chained-prefixes.case:9: repeated attribute path 'systemd.services'; nest it once

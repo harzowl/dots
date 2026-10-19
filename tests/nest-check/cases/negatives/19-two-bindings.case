@@ -1,0 +1,6 @@
+{
+  genres = {
+    enable = true;
+    metal = false;
+  };
+}

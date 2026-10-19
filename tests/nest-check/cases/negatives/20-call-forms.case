@@ -1,0 +1,9 @@
+{ lib, ... }:
+{
+  config = lib.mkIf true { a = 1; };
+  merged = lib.mkMerge [ { b = 2; } ];
+  optional = lib.optionalAttrs true { c = 3; };
+  listed = [ { d = 4; } ];
+  called = someFunction { e = 5; };
+  bound = let value = 1; in value;
+}

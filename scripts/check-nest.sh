@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Flag assignments whose dotted LHS paths share a prefix inside the same
-# attrset literal (or the same `let` binding scope) — the prefix should be
-# nested once.
+# Flag two kinds of unnecessary nesting:
 #
-# Two assignments are compared only when they are direct children of the same
+# 1. Assignments whose dotted LHS paths share a prefix inside the same attrset
+#    literal (or the same `let` binding scope) — the prefix should be nested
+#    once.
+# 2. Assignments whose entire value is an attrset literal with exactly one plain
+#    `key = value;` binding — that binding should be flattened into the LHS.
+#
+# Rule 1 compares two assignments only when they are direct children of the same
 # scope: a `{ ... }` literal, or the bindings of the same `let`. A `let` opens
 # a scope frame that its matching `in` closes, so an inline `let ... in` used as
 # a value (e.g. `x = let y = 1; in y;`) opens and closes inside that value and
@@ -34,6 +38,11 @@ function reset_file() {
   frame_top = 0; frame_counter = 0
   n_assigns = 0
   delete apath; delete aline; delete akey
+  cand_active = 0; cand_depth = 0
+  cand_text = ""; cand_lhs = ""; cand_line = 0
+  pending_start = 0; pending_lhs = ""; pending_line = 0
+  r2_n = 0
+  delete r2_line; delete r2_msg
 }
 
 function fkey(   k, s) {
@@ -96,20 +105,93 @@ function scan(line,   i, len, ch, two, three, cur, prev, nxt, blank) {
       }
       blank = blank ch; i++; continue
     }
+    if (cur == "xcode") {
+      if (ch == "#") break
+      if (two == "/*") { blank = blank "  "; i += 2; st_mode = "bcomment"; continue }
+      if (ch == "\"") { blank = blank " "; i++; ctype[++ctx_top] = "str"; continue }
+      if (two == "''") { blank = blank "  "; i += 2; ctype[++ctx_top] = "istr"; continue }
+      if (ch == "{") { blank = blank " "; i++; cbrace[ctx_top]++; continue }
+      if (ch == "}") {
+        blank = blank " "; i++
+        if (cbrace[ctx_top] > 0) cbrace[ctx_top]--
+        else ctx_top--
+        continue
+      }
+      blank = blank " "; i++; continue
+    }
     if (cur == "str") {
       if (ch == "\\") { blank = blank "  "; i += 2; continue }
-      if (two == "${") { blank = blank "  "; i += 2; ctype[++ctx_top] = "code"; cbrace[ctx_top] = 0; continue }
+      if (two == "${") { blank = blank "  "; i += 2; ctype[++ctx_top] = "xcode"; cbrace[ctx_top] = 0; continue }
       if (ch == "\"") { blank = blank " "; i++; ctx_top--; continue }
       blank = blank " "; i++; continue
     }
     if (cur == "istr") {
       if (three == "''$" || three == "'''" || three == "''\\") { blank = blank "   "; i += 3; continue }
-      if (two == "${") { blank = blank "  "; i += 2; ctype[++ctx_top] = "code"; cbrace[ctx_top] = 0; continue }
+      if (two == "${") { blank = blank "  "; i += 2; ctype[++ctx_top] = "xcode"; cbrace[ctx_top] = 0; continue }
       if (two == "''") { blank = blank "  "; i += 2; ctx_top--; continue }
       blank = blank " "; i++; continue
     }
   }
   return blank
+}
+
+# The value of an assignment, once strings and comments are blanked, is scanned
+# here: characters directly inside the outermost `{` are collected, characters
+# inside nested braces are ignored. That leaves only the top-level bindings, so
+# exactly one `;` means exactly one binding.
+function cand_finish(   t, tmp, nsemi) {
+  t = cand_text
+  gsub(/^[ \t]+|[ \t]+$/, "", t)
+  tmp = t
+  gsub(/[^;]/, "", tmp)
+  nsemi = length(tmp)
+  if (nsemi == 1 && t ~ /^[A-Za-z_][A-Za-z0-9_'-]*[ \t]*=/) {
+    r2_n++
+    r2_line[r2_n] = cand_line
+    r2_msg[r2_n] = sprintf("unnecessary single-binding attrset '%s'; flatten it", cand_lhs)
+  }
+  cand_active = 0; cand_depth = 0; cand_text = ""
+}
+
+function cand_feed(s,   i, n, ch) {
+  i = 1
+  n = length(s)
+  while (i <= n && cand_active) {
+    ch = substr(s, i, 1)
+    if (cand_depth == 0) {
+      if (ch == " " || ch == "\t") { i++; continue }
+      if (ch == ";") { cand_finish(); return }
+      cand_active = 0; return
+    }
+    if (ch == "{") { cand_depth++; i++; continue }
+    if (ch == "}") { cand_depth--; i++; continue }
+    if (cand_depth == 1) cand_text = cand_text ch
+    i++
+  }
+}
+
+function rhs_check(s,   m, rest) {
+  if (cand_active) { cand_feed(s); return }
+  if (pending_start) {
+    if (s ~ /^[ \t]*$/) return
+    if (match(s, /^[ \t]*\{/)) {
+      pending_start = 0
+      cand_active = 1; cand_depth = 1; cand_text = ""
+      cand_lhs = pending_lhs; cand_line = pending_line
+      cand_feed(substr(s, RSTART + RLENGTH))
+      return
+    }
+    pending_start = 0
+  }
+  if (match(s, RHS_OPEN, m)) {
+    cand_active = 1; cand_depth = 1; cand_text = ""
+    cand_lhs = m[1]; cand_line = FNR
+    cand_feed(substr(s, RSTART + RLENGTH))
+    return
+  }
+  if (match(s, RHS_PENDING, m)) {
+    pending_start = 1; pending_lhs = m[1]; pending_line = FNR
+  }
 }
 
 function lcp(a, b,   na, nb, sa, sb, i, out) {
@@ -133,26 +215,35 @@ function flush(   i, j, p, nf, a, b, kl, kp) {
       if (p == "" || (p in seen)) continue
       seen[p] = 1
       nf++
-      fP[nf] = p
       fL[nf] = (aline[i] > aline[j]) ? aline[i] : aline[j]
+      fM[nf] = sprintf("repeated attribute path '%s'; nest it once", p)
     }
+  }
+  for (i = 1; i <= r2_n; i++) {
+    nf++
+    fL[nf] = r2_line[i]
+    fM[nf] = r2_msg[i]
   }
   for (a = 2; a <= nf; a++) {
-    kl = fL[a]; kp = fP[a]; b = a - 1
-    while (b >= 1 && (fL[b] > kl || (fL[b] == kl && fP[b] > kp))) {
-      fL[b + 1] = fL[b]; fP[b + 1] = fP[b]; b--
+    kl = fL[a]; kp = fM[a]; b = a - 1
+    while (b >= 1 && (fL[b] > kl || (fL[b] == kl && fM[b] > kp))) {
+      fL[b + 1] = fL[b]; fM[b + 1] = fM[b]; b--
     }
-    fL[b + 1] = kl; fP[b + 1] = kp
+    fL[b + 1] = kl; fM[b + 1] = kp
   }
   for (a = 1; a <= nf; a++) {
-    printf "%s:%d: repeated attribute path '%s'; nest it once\n", curfile, fL[a], fP[a]
+    printf "%s:%d: %s\n", curfile, fL[a], fM[a]
   }
   found += nf
-  delete fP; delete fL
+  delete fL; delete fM
+  delete r2_line; delete r2_msg
+  r2_n = 0
 }
 
 BEGIN {
   ASSIGN = "^[ \t]*([A-Za-z_][A-Za-z0-9_'-]*(\\.[A-Za-z_][A-Za-z0-9_'-]*)+)[ \t]*="
+  RHS_OPEN = "^[ \t]*([A-Za-z_][A-Za-z0-9_'-]*(\\.[A-Za-z_][A-Za-z0-9_'-]*)*)[ \t]*=[ \t]*\\{"
+  RHS_PENDING = "^[ \t]*([A-Za-z_][A-Za-z0-9_'-]*(\\.[A-Za-z_][A-Za-z0-9_'-]*)*)[ \t]*=[ \t]*$"
   have_file = 0
   found = 0
 }
@@ -175,6 +266,7 @@ BEGIN {
       akey[n_assigns] = key
     }
   }
+  rhs_check(blank)
 }
 
 END {

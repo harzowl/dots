@@ -1,0 +1,2 @@
+cases/08-single-binding-nest.case:2: unnecessary single-binding attrset 'genres'; flatten it
+cases/08-single-binding-nest.case:3: unnecessary single-binding attrset 'music'; flatten it

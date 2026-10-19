@@ -2,9 +2,7 @@
 {
   config = lib.mkMerge [
     (lib.mkIf config.nix.gc.enable {
-      nix.gc = {
-        automatic = true;
-      };
+      nix.gc.automatic = true;
     })
     (lib.mkIf config.nix.store.enable {
       nix.settings.experimental-features = [ "flakes" ];

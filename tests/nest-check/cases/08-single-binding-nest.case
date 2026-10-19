@@ -1,0 +1,7 @@
+{
+  genres = { enable = true; };
+  music = {
+    # comments and blank lines are not bindings
+    enable = true;
+  };
+}

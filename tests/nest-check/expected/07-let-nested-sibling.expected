@@ -1,1 +1,1 @@
-cases/07-let-nested-sibling.case:9: repeated attribute path 'environment.variables'; nest it once
+cases/07-let-nested-sibling.case:7: repeated attribute path 'environment.variables'; nest it once
