@@ -59,7 +59,7 @@ mkDotsModule {
       settings = lib.mkOption {
         inherit ((pkgs.formats.yaml { })) type;
         default = { };
-        description = "beets configuration keys, merged over `directory` and `library`; a section with `enable = true` is listed in `plugins`.";
+        description = "beets configuration keys, merged over `directory` and `library`; a section with `enable = true` is listed in `plugins` under its optional `plugin` name, defaulting to the section name.";
       };
 
       extraPlugins = lib.mkOption {
@@ -100,12 +100,21 @@ mkDotsModule {
 
       sections = lib.mapAttrs (
         _: section:
-        if lib.isAttrs section && section ? enable then removeAttrs section [ "enable" ] else section
+        if lib.isAttrs section then
+          removeAttrs section [
+            "enable"
+            "plugin"
+          ]
+        else
+          section
       ) cfg.settings;
 
-      plugins = lib.attrNames (
-        lib.filterAttrs (
-          _: section: lib.isAttrs section && section ? enable && section.enable == true
+      plugins = lib.concatLists (
+        lib.mapAttrsToList (
+          name: section:
+          lib.optional (lib.isAttrs section && section ? enable && section.enable == true) (
+            section.plugin or name
+          )
         ) cfg.settings
       );
 
