@@ -2,11 +2,14 @@
   config,
   lib,
   pkgs,
+  services ? { },
   ...
 }:
 let
   mkDockerService = import ../../../../../lib/mkDockerService.nix;
   camelToUpperSnake = import ../../../../../lib/camelToUpperSnake.nix { inherit lib; };
+
+  domain = config.dots.system.core.domain;
 
   defaults = {
     image = "quay.io/oauth2-proxy/oauth2-proxy:latest";
@@ -16,16 +19,53 @@ let
     environmentFiles = [ "/run/secretspec/env" ];
   };
 
-  optionType = lib.types.submodule {
-    options = (mkDockerService.options { inherit lib defaults; }) // {
-      enable = lib.mkEnableOption "this oauth2-proxy gate";
-      port = lib.mkOption {
-        type = lib.types.port;
-        default = 4180;
-        description = "Port oauth2-proxy listens on (published and opened in the firewall).";
-      };
-    };
-  };
+  optionType = lib.types.attrsOf (
+    lib.types.submodule (
+      { name, config, ... }:
+      let
+        inherit (config) service;
+        sso = (services.${service} or { }).sso or { };
+        redirectPath =
+          if (sso.redirectPaths or [ ]) != [ ] then builtins.head sso.redirectPaths else "/oauth2/callback";
+      in
+      {
+        options = (mkDockerService.options { inherit lib defaults; }) // {
+          enable = lib.mkEnableOption "this oauth2-proxy gate" // {
+            default = true;
+          };
+          port = lib.mkOption {
+            type = lib.types.port;
+            default = 4180;
+            description = "Port oauth2-proxy listens on (published and opened in the firewall).";
+          };
+          service = lib.mkOption {
+            type = lib.types.str;
+            default = name;
+            description = ''
+              Key into the consuming flake's `services` registry. The entry's
+              `sso` block supplies the client id, redirect path and allowed
+              roles.
+            '';
+          };
+          clientId = lib.mkOption {
+            type = lib.types.str;
+            default = sso.clientId or "oauth2-proxy-${service}";
+            description = "OIDC client id, taken from the service registry.";
+          };
+          redirectUrl = lib.mkOption {
+            type = lib.types.str;
+            default = "https://${service}.${domain}${redirectPath}";
+            description = "OIDC redirect URL, derived from the service's host and redirect path.";
+          };
+          allowedRoles = lib.mkOption {
+            type = lib.types.nullOr (lib.types.listOf lib.types.str);
+            default = sso.allowedRoles or null;
+            description = "Roles a user must hold to pass the gate; `null` allows any authenticated user.";
+          };
+        };
+      }
+    )
+  );
 
   envKey = camelToUpperSnake;
   gateEnvKey =
@@ -43,7 +83,7 @@ in
 {
   options.dots.system.services.auth.oauth2-proxy = {
     gates = lib.mkOption {
-      type = lib.types.attrsOf optionType;
+      type = optionType;
       default = { };
       description = "oauth2-proxy gates, one container per fronted app.";
     };
@@ -62,6 +102,16 @@ in
             name = "oauth2-proxy-${name}";
           };
         };
+
+      settingsFor =
+        g:
+        {
+          inherit (g) clientId redirectUrl;
+        }
+        // lib.optionalAttrs (g.allowedRoles != null) {
+          inherit (g) allowedRoles;
+        }
+        // g.settings;
 
       container = name: g: {
         inherit (g)
@@ -86,7 +136,7 @@ in
             skipProviderButton = true;
             excludeLoggingPaths = [ "/oauth2/callback" ];
           }
-          // g.settings
+          // settingsFor g
         );
         ports = map (
           p:
