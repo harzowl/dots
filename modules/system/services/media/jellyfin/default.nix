@@ -161,6 +161,12 @@ mkDotsModule {
         default = { };
         description = "Optional Keycloak OIDC login through the SSO-Auth plugin.";
       };
+
+      patches = lib.mkOption {
+        type = lib.types.listOf lib.types.path;
+        default = [ ];
+        description = "Patch files applied to the bundled Jellyfin web UI index.html when SSO is enabled.";
+      };
     };
 
   toConfig =
@@ -188,12 +194,26 @@ mkDotsModule {
       renderer = pkgs.writeText "jellyfin-render-sso.py" (builtins.readFile ./render-sso.py);
       ssoConfigService = "${cfg.name}-sso-config";
 
+      patchedIndex =
+        if cfg.sso.enable && cfg.patches != [ ] then
+          pkgs.runCommand "jellyfin-web-index" { nativeBuildInputs = [ pkgs.patch ]; } ''
+            cp ${./web/index.html} index.html
+            ${lib.concatMapStrings (p: "patch -p1 < ${p}\n") cfg.patches}
+            mkdir -p $out
+            cp index.html $out/index.html
+          ''
+        else
+          null;
+
       volumes = [
         "${cfg.configDir}:/config"
         "${cfg.cacheDir}:/cache"
         "${cfg.mediaDir}:/media:ro"
       ]
       ++ lib.optional cfg.sso.enable "${ssoPlugin}:/config/plugins/${pluginDir}:ro"
+      ++ lib.optional (
+        patchedIndex != null
+      ) "${patchedIndex}/index.html:/jellyfin/jellyfin-web/index.html:ro"
       ++ cfg.volumes;
     in
     lib.mkMerge [
