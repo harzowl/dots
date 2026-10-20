@@ -229,6 +229,7 @@ mkDotsModule {
           pkgs.runCommand "jellyfin-web-index" { nativeBuildInputs = [ pkgs.patch ]; } ''
             cp ${./web/index.html} index.html
             ${lib.concatMapStrings (p: "patch -p1 < ${p}\n") cfg.patches}
+            sed -i 's|@SSO_LOGOUT@|${cfg.sso.endpoint}/protocol/openid-connect/logout|g' index.html
             mkdir -p $out
             cp index.html $out/index.html
           ''
