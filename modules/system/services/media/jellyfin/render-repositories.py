@@ -19,14 +19,43 @@ repositories = json.loads(Path(args.repositories).read_text(encoding="utf-8"))
 tree = ET.parse(path)
 root = tree.getroot()
 
-for element in root.findall("PluginRepositories"):
-    root.remove(element)
+container = root.find("PluginRepositories")
+if container is None:
+    container = ET.SubElement(root, "PluginRepositories")
 
-container = ET.SubElement(root, "PluginRepositories")
+def text(item, name):
+    child = item.find(name)
+    return (child.text or "").strip() if child is not None else ""
+
+existing = list(container.findall("RepositoryInfo"))
 for repository in repositories:
-    item = ET.SubElement(container, "RepositoryInfo")
-    ET.SubElement(item, "Name").text = repository["name"]
-    ET.SubElement(item, "Url").text = repository["url"]
+    name = repository["name"].strip()
+    url = repository["url"].strip()
+
+    # Match by name or URL so a declared repository updates an entry the UI
+    # already created instead of adding a duplicate.
+    item = next(
+        (candidate for candidate in existing
+         if text(candidate, "Name").lower() == name.lower()
+         or text(candidate, "Url").lower() == url.lower()),
+        None,
+    )
+    if item is None:
+        item = ET.SubElement(container, "RepositoryInfo")
+        existing.append(item)
+
+    name_element = item.find("Name")
+    if name_element is None:
+        name_element = ET.SubElement(item, "Name")
+    name_element.text = name
+
+    url_element = item.find("Url")
+    if url_element is None:
+        url_element = ET.SubElement(item, "Url")
+    url_element.text = url
+
+    if item.find("Enabled") is None:
+        ET.SubElement(item, "Enabled").text = "true"
 
 tree.write(path, encoding="utf-8", xml_declaration=True)
 
