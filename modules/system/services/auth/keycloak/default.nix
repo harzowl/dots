@@ -65,6 +65,12 @@ mkDotsModule {
         description = "Usernames to grant the realm's `realm-admin` client role (full administration of this realm). Applied by the reconcile, so it is idempotent.";
       };
 
+      realmAdminRoles = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Realm roles granted to every `realmAdmins` user, and removed from everyone else.";
+      };
+
       extraVolumes = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -165,6 +171,7 @@ mkDotsModule {
             "@PARTIAL_JSON@"
             "@PROFILE_JSON@"
             "@REALM_ADMINS@"
+            "@REALM_ADMIN_ROLES@"
             "@DEFAULT_REQUIRED_ACTIONS@"
             "@DEFAULT_ROLES@"
             "@SERVICE_ACCOUNT_ROLES@"
@@ -179,6 +186,7 @@ mkDotsModule {
             (toString partialJson)
             (if profileJson != null then toString profileJson else "")
             (lib.concatStringsSep " " cfg.realmAdmins)
+            (lib.concatStringsSep " " cfg.realmAdminRoles)
             (lib.concatStringsSep " " (realm.defaultRequiredActions or [ ]))
             (lib.concatStringsSep " " (realm.defaultRoles or [ ]))
             (if serviceAccountsJson != null then toString serviceAccountsJson else "")

@@ -76,6 +76,7 @@ fi
 # Authoritative: `realm-admin` is held by exactly the declared users — grant the
 # declared, revoke anyone else — so removing a name actually removes the role.
 declared_admins="@REALM_ADMINS@"
+declared_admin_roles="@REALM_ADMIN_ROLES@"
 for u in $(kcadm get users -r "${REALM}" --fields username --format csv 2>/dev/null | tr -d '"\r'); do
   if kcadm get-roles -r "${REALM}" --uusername "$u" --cclientid realm-management 2>/dev/null | grep -q realm-admin; then
     has=yes
@@ -85,9 +86,15 @@ for u in $(kcadm get users -r "${REALM}" --fields username --format csv 2>/dev/n
   case " ${declared_admins} " in
     *" ${u} "*)
       [ "${has}" = yes ] || kcadm add-roles -r "${REALM}" --uusername "$u" --cclientid realm-management --rolename realm-admin || true
+      for r in $declared_admin_roles; do
+        kcadm add-roles -r "${REALM}" --uusername "$u" --rolename "$r" >/dev/null 2>&1 || true
+      done
       ;;
     *)
       [ "${has}" = no ] || kcadm remove-roles -r "${REALM}" --uusername "$u" --cclientid realm-management --rolename realm-admin || true
+      for r in $declared_admin_roles; do
+        kcadm remove-roles -r "${REALM}" --uusername "$u" --rolename "$r" >/dev/null 2>&1 || true
+      done
       ;;
   esac
 done
