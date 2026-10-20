@@ -64,7 +64,9 @@ text("DoNotValidateEndpoints", "false")
 text("DoNotValidateIssuerName", "false")
 text("DisablePushedAuthorization", env("JELLYFIN_SSO_DISABLE_PUSHED_AUTHORIZATION", "true"))
 text("SchemeOverride", env("JELLYFIN_SSO_SCHEME", "https"))
-text("PortOverride", env("JELLYFIN_SSO_PORT", "443"))
+port = env("JELLYFIN_SSO_PORT")
+if port:
+    text("PortOverride", port)
 text("NewPath", env("JELLYFIN_SSO_NEW_PATH", "true"))
 
 path = Path(env("JELLYFIN_SSO_CONFIG_DIR")) / "plugins" / "configurations" / "SSO-Auth.xml"

@@ -98,9 +98,9 @@ mkDotsModule {
             };
 
             portOverride = lib.mkOption {
-              type = lib.types.port;
-              default = 443;
-              description = "Port used in the redirect URI.";
+              type = lib.types.nullOr lib.types.port;
+              default = null;
+              description = "Port used in the redirect URI; null uses the request's Host header.";
             };
 
             newPath = lib.mkOption {
@@ -238,7 +238,7 @@ mkDotsModule {
             JELLYFIN_SSO_CONFIG_DIR = cfg.configDir;
             JELLYFIN_SSO_OWNER = cfg.dataOwner;
             JELLYFIN_SSO_SCHEME = cfg.sso.schemeOverride;
-            JELLYFIN_SSO_PORT = toString cfg.sso.portOverride;
+            JELLYFIN_SSO_PORT = if cfg.sso.portOverride != null then toString cfg.sso.portOverride else "";
             JELLYFIN_SSO_NEW_PATH = lib.boolToString cfg.sso.newPath;
             JELLYFIN_SSO_DISABLE_PUSHED_AUTHORIZATION = lib.boolToString cfg.sso.disablePushedAuthorization;
             JELLYFIN_SSO_ENABLE_AUTHORIZATION = lib.boolToString cfg.sso.enableAuthorization;
