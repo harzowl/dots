@@ -213,15 +213,12 @@ def remove_tree(path):
         print(f"could not remove stale {path}: {error}", file=sys.stderr)
 
 
-def prune_empty(root, max_age):
-    now = time.time()
+def prune_empty(root):
     for dirpath, dirnames, filenames in os.walk(root, topdown=False, followlinks=False):
         path = Path(dirpath)
         if path == root or filenames:
             continue
         try:
-            if now - path.stat().st_mtime < max_age:
-                continue
             path.rmdir()
         except OSError:
             pass
@@ -243,7 +240,6 @@ def clean_stale(complete, incomplete, max_age):
             if newest and now - newest > max_age:
                 remove_tree(path)
                 dirnames[:] = []
-        prune_empty(root, max_age)
 
 
 def import_album(album, beet, complete, settle):
@@ -335,6 +331,8 @@ def main():
                 print(f"skip {album}: {error}", file=sys.stderr)
                 write_marker(album, "error", str(error))
 
+    prune_empty(args.complete)
+    prune_empty(args.incomplete)
     return 0
 
 

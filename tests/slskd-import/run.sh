@@ -195,7 +195,7 @@ make_album "$unmarked"
 mkdir -p "$empty"
 printf '%s\n' '{"outcome": "duplicate", "time": "2020-01-01T00:00:00Z"}' >"$marked/.slskd-imported"
 find "$marked" "$unmarked" -type f -exec touch -d '2 hours ago' {} +
-touch -d '2 hours ago' "$marked" "$unmarked" "$empty"
+touch -d '2 hours ago' "$marked" "$unmarked"
 if run_import "$complete" "$tmp/beet-error" --stale-after 1 >"$tmp/stale.out" 2>&1; then
   passed=$((passed + 1))
 else
@@ -207,7 +207,7 @@ check_absent "stale marked album removed" "$marked"
 check "unmarked old album kept" 1 "$(test -d "$unmarked" && echo 1 || echo 0)"
 check_absent "stale incomplete removed" "$tmp/incomplete/stale-user"
 check "recent incomplete kept" 1 "$(test -d "$tmp/incomplete/recent-user" && echo 1 || echo 0)"
-check_absent "stale empty dir removed" "$empty"
+check_absent "empty dir removed" "$empty"
 
 # Genuine per-album error: logged, marked, and the run still succeeds.
 complete="$tmp/error/complete"
