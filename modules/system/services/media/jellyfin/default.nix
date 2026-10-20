@@ -141,8 +141,8 @@ mkDotsModule {
 
             disablePushedAuthorization = lib.mkOption {
               type = lib.types.bool;
-              default = true;
-              description = "Disable PAR in the SSO plugin. Keycloak rejects the plugin's PAR request; PKCE remains enabled.";
+              default = false;
+              description = "Disable PAR in the SSO plugin. Only needed for providers that reject the plugin's PAR request.";
             };
 
             pluginVersion = lib.mkOption {
