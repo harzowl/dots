@@ -37,7 +37,7 @@ mkDotsModule {
       mediaDir = lib.mkOption {
         type = lib.types.str;
         default = "/mnt/media";
-        description = "Host directory holding the media library (mounted read-only at `/media`).";
+        description = "Host directory holding the media library (mounted at `/media`).";
       };
 
       dataOwner = lib.mkOption {
@@ -238,7 +238,7 @@ mkDotsModule {
       volumes = [
         "${cfg.configDir}:/config"
         "${cfg.cacheDir}:/cache"
-        "${cfg.mediaDir}:/media:ro"
+        "${cfg.mediaDir}:/media"
       ]
       ++ lib.optional (
         patchedIndex != null
