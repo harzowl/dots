@@ -6,7 +6,7 @@
 +(function () {
 +  if (/[?&]local=1(?:&|$)/.test(window.location.search)) return;
 +  function check() {
-+    if (window.location.hash === "#/login") {
++    if (window.location.hash.indexOf("#/login") === 0) {
 +      window.location.replace("/sso/OID/start/keycloak");
 +    }
 +  }
