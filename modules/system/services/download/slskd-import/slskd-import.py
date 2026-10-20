@@ -14,12 +14,17 @@ a marked album is never handed to beets again. A successful import removes the
 sidecars and prunes the emptied directories; a duplicate or failed import is
 left in place. Audio is never deleted. Only an unusable complete root or a
 missing `beet` makes the run fail; per-album problems are logged and skipped.
+
+With `--stale-after`, an incomplete tree whose newest file is older than the
+given age is removed, as is a completed album already marked duplicate or
+error. An album still waiting to be imported is never removed.
 """
 
 import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -200,6 +205,47 @@ def prune(album, complete):
         directory = directory.parent
 
 
+def remove_tree(path):
+    try:
+        shutil.rmtree(path)
+        print(f"removed stale {path}")
+    except OSError as error:
+        print(f"could not remove stale {path}: {error}", file=sys.stderr)
+
+
+def prune_empty(root, max_age):
+    now = time.time()
+    for dirpath, dirnames, filenames in os.walk(root, topdown=False, followlinks=False):
+        path = Path(dirpath)
+        if path == root or filenames:
+            continue
+        try:
+            if now - path.stat().st_mtime < max_age:
+                continue
+            path.rmdir()
+        except OSError:
+            pass
+
+
+def clean_stale(complete, incomplete, max_age):
+    if max_age <= 0:
+        return
+
+    now = time.time()
+    for root, marked_only in ((incomplete, False), (complete, True)):
+        for dirpath, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
+            path = Path(dirpath)
+            if path == root:
+                continue
+            if marked_only and not (path / MARKER_NAME).exists():
+                continue
+            newest = newest_mtime(path)
+            if newest and now - newest > max_age:
+                remove_tree(path)
+                dirnames[:] = []
+        prune_empty(root, max_age)
+
+
 def import_album(album, beet, complete, settle):
     if (album / MARKER_NAME).exists():
         print(f"skip {album}: already handled ({marker_outcome(album)})")
@@ -240,12 +286,15 @@ def main():
     parser.add_argument("--beet", required=True)
     parser.add_argument("--settle", type=int, default=120)
     parser.add_argument("--top-level-albums", action="store_true")
+    parser.add_argument("--stale-after", type=int, default=0)
     args = parser.parse_args()
 
     if not args.complete.is_dir():
         sys.exit(f"complete directory not found: {args.complete}")
     if not os.path.isfile(args.beet) or not os.access(args.beet, os.X_OK):
         sys.exit(f"beet is not executable: {args.beet}")
+
+    clean_stale(args.complete, args.incomplete, args.stale_after)
 
     try:
         top_entries = sorted(os.scandir(args.complete), key=lambda item: item.name)

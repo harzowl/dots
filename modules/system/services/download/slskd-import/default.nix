@@ -34,6 +34,18 @@ mkDotsModule {
         '';
       };
 
+      staleAfter = lib.mkOption {
+        type = lib.types.ints.unsigned;
+        default = 3600;
+        description = ''
+          Remove a directory whose newest file is older than this many seconds.
+          Incomplete trees are always eligible. In the complete tree only albums
+          already marked duplicate or error are removed, plus empty directories,
+          so an album waiting to be imported is never removed. Set to 0 to
+          disable.
+        '';
+      };
+
       incompleteDir = lib.mkOption {
         type = lib.types.str;
         description = "slskd's incomplete-download root, used to skip albums still in progress.";
@@ -106,6 +118,10 @@ mkDotsModule {
                 (toString cfg.settleSeconds)
               ]
               ++ lib.optional cfg.topLevelAlbums "--top-level-albums"
+              ++ lib.optionals (cfg.staleAfter > 0) [
+                "--stale-after"
+                (toString cfg.staleAfter)
+              ]
             );
           };
         };

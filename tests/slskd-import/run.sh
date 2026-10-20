@@ -176,6 +176,39 @@ fi
 check "staged import moved audio" 2 "$(find "$IMPORTED_DIR" -name '*.flac' | wc -l)"
 check_absent "staged import pruned album" "$album"
 
+# Stale cleanup: old incomplete trees and marked complete albums go, unmarked
+# albums waiting for import stay.
+mkdir -p "$tmp/incomplete/stale-user/Artist/Album" "$tmp/incomplete/recent-user/Artist/Album"
+: >"$tmp/incomplete/stale-user/Artist/Album/01.part"
+: >"$tmp/incomplete/recent-user/Artist/Album/01.part"
+touch -d '2 hours ago' \
+  "$tmp/incomplete/stale-user/Artist/Album/01.part" \
+  "$tmp/incomplete/stale-user/Artist/Album" \
+  "$tmp/incomplete/stale-user/Artist" \
+  "$tmp/incomplete/stale-user"
+complete="$tmp/stale/complete"
+marked="$complete/dummy-user/directories/Artist/Marked"
+unmarked="$complete/dummy-user/directories/Artist/Unmarked"
+empty="$complete/dummy-user/directories/Artist/EmptyOld"
+make_album "$marked"
+make_album "$unmarked"
+mkdir -p "$empty"
+printf '%s\n' '{"outcome": "duplicate", "time": "2020-01-01T00:00:00Z"}' >"$marked/.slskd-imported"
+find "$marked" "$unmarked" -type f -exec touch -d '2 hours ago' {} +
+touch -d '2 hours ago' "$marked" "$unmarked" "$empty"
+if run_import "$complete" "$tmp/beet-error" --stale-after 1 >"$tmp/stale.out" 2>&1; then
+  passed=$((passed + 1))
+else
+  echo "FAIL stale: importer exited non-zero" >&2
+  cat "$tmp/stale.out" >&2
+  failed=$((failed + 1))
+fi
+check_absent "stale marked album removed" "$marked"
+check "unmarked old album kept" 1 "$(test -d "$unmarked" && echo 1 || echo 0)"
+check_absent "stale incomplete removed" "$tmp/incomplete/stale-user"
+check "recent incomplete kept" 1 "$(test -d "$tmp/incomplete/recent-user" && echo 1 || echo 0)"
+check_absent "stale empty dir removed" "$empty"
+
 # Genuine per-album error: logged, marked, and the run still succeeds.
 complete="$tmp/error/complete"
 album="$complete/dummy-user/directories/Artist/Album"
