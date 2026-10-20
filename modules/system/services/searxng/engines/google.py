@@ -68,6 +68,10 @@ filter_mapping = {0: "off", 1: "medium", 2: "high"}
 # https://github.com/searxng/searxng/issues/6359
 user_agent = "Opera/9.80 (Android; Opera Mini/72.0.2254/191.249; U; en) Presto/2.12.423 Version/12.16"
 
+# - https://github.com/searxng/searxng/pull/1679#issuecomment-1235432746
+# - https://github.com/searxng/searxng/issues/1555
+consent_cookie = "CAISHAgBEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LyaBg"
+
 
 # specific xpath variables
 # ------------------------
@@ -239,11 +243,7 @@ def get_google_info(params: "OnlineParams", eng_traits: EngineTraits) -> dict[st
 
     ret_val["headers"]["Accept"] = "*/*"
 
-    # Cookies
-
-    # - https://github.com/searxng/searxng/pull/1679#issuecomment-1235432746
-    # - https://github.com/searxng/searxng/issues/1555
-    ret_val["cookies"]["SOCS"] = "CAISHAgBEhJnd3NfMjAyMzA4MTAtMF9SQzIaAmVuIAEaBgiA_LyaBg"
+    ret_val["cookies"]["SOCS"] = consent_cookie
 
     return ret_val
 
@@ -276,6 +276,38 @@ def unwrap_google_url(raw_url: str) -> str:
     if raw_url.startswith("/url?") and "q=" in raw_url:
         return unquote(raw_url.split("q=", 1)[1].split("&", 1)[0])
     return raw_url
+
+
+def resolve_google_urls(urls: list[str]) -> list[str | None]:
+    """Resolve the opaque ``/url?…`` links of the mobile layout.
+
+    Google hands out an encrypted token instead of the target; the target is
+    only in the redirect's ``Location`` header, so it must be followed without
+    loading the page.
+    """
+    # pylint: disable=import-outside-toplevel
+    from searx.network import Request, multi_requests
+
+    requests = [
+        Request.get(
+            url,
+            headers={"User-Agent": user_agent, "Accept": "*/*"},
+            cookies={"SOCS": consent_cookie},
+            impersonate="none",
+            allow_redirects=False,
+        )
+        for url in urls
+    ]
+    resolved: list[str | None] = []
+    for redirect_response in multi_requests(requests):
+        location = None
+        if not isinstance(redirect_response, Exception):
+            location = redirect_response.headers.get("location") or redirect_response.headers.get("Location")
+        if location and location.startswith(("http://", "https://")):
+            resolved.append(location)
+        else:
+            resolved.append(None)
+    return resolved
 
 
 def wml_dom(resp: "SXNG_Response"):
@@ -336,7 +368,7 @@ def response(resp: "SXNG_Response") -> EngineResults:
     results = EngineResults()
     dom = wml_dom(resp)
 
-    # parse results
+    parsed = []
     for result in eval_xpath_list(dom, '//div[contains(@class, "Gx5Zad")]'):
 
         try:
@@ -360,23 +392,43 @@ def response(resp: "SXNG_Response") -> EngineResults:
                 )
                 continue
 
-            url = unwrap_google_url(raw_url)
-            if not url.startswith("http"):
-                continue
             content = extract_text(eval_xpath_getindex(result, './/div[contains(@class, "H66NU")]', 0, default=None))
-            thumbnail = eval_xpath_getindex(result, './/img[contains(@src, "http")]/@src', 0, default=None)
-            results.add(
-                results.types.MainResult(
-                    url=url,
-                    title=title or "",
-                    content=content or "",
-                    thumbnail=thumbnail or "",
-                )
+            parsed.append(
+                {
+                    "title": title or "",
+                    "url": unwrap_google_url(raw_url),
+                    "redirect": raw_url if raw_url.startswith("/url?") else None,
+                    "content": content or "",
+                    "thumbnail": eval_xpath_getindex(result, './/img[contains(@src, "http")]/@src', 0, default=None)
+                    or "",
+                }
             )
 
         except Exception as e:  # pylint: disable=broad-except
             logger.error(e, exc_info=True)
             continue
+
+    pending = [item for item in parsed if item["redirect"] and not item["url"].startswith(("http://", "https://"))]
+    if pending:
+        try:
+            resolved = resolve_google_urls(["https://www.google.com" + item["redirect"] for item in pending])
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(e, exc_info=True)
+            resolved = []
+        for item, url in zip(pending, resolved):
+            item["url"] = url
+
+    for item in parsed:
+        if not item["url"] or not item["url"].startswith(("http://", "https://")):
+            continue
+        results.add(
+            results.types.MainResult(
+                url=item["url"],
+                title=item["title"],
+                content=item["content"],
+                thumbnail=item["thumbnail"],
+            )
+        )
 
     # parse suggestion
     for suggestion in eval_xpath_list(dom, suggestion_xpath):
