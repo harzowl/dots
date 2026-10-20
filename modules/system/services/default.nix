@@ -5,6 +5,7 @@
     ./dashboard
     ./download
     ./mail
+    ./media
     ./minecraft
     ./mozhi
     ./music
