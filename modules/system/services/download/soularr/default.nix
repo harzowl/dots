@@ -1,6 +1,8 @@
 let
   mkDotsModule = import ../../../../../lib/mkDotsModule.nix;
   mkSecretEnv = import ../../../../../lib/mkSecretEnv.nix;
+
+  leaveDownloadsInPlacePatch = ./0002-leave-downloads-in-place.patch;
 in
 mkDotsModule {
   optionPath = [
@@ -20,12 +22,22 @@ mkDotsModule {
         description = "Pinned soularr package to run.";
       };
 
+      patches.leave-downloads-in-place = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Apply the patch that reads `[Download Settings] stage_downloads`
+          and leaves a completed album in its peer directory when the setting
+          is false. Required when `stageDownloads` is false.
+        '';
+      };
+
       user = lib.mkOption {
         type = lib.types.str;
         description = ''
           Service user, as a name or a numeric UID. It must match the user the
-          Lidarr and slskd containers run as, since soularr moves downloaded
-          files between their shared directories.
+          Lidarr and slskd containers run as, since soularr reads and, when
+          staging, moves downloaded files in their shared directories.
         '';
       };
 
@@ -74,6 +86,18 @@ mkDotsModule {
           Directory shared by slskd and Lidarr, as seen by this host. It becomes
           both `[Slskd] download_dir` and `[Lidarr] download_dir`; a host whose
           containers see different paths can override either key in `settings`.
+        '';
+      };
+
+      stageDownloads = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Move each completed album into `downloadDir` for Lidarr to import.
+          Disable it when another importer consumes the slskd tree: the album
+          then stays below its peer directory instead of being flattened into
+          the download root. Disabling it requires
+          `patches.leave-downloads-in-place`.
         '';
       };
 
@@ -152,10 +176,19 @@ mkDotsModule {
           host_url = cfg.slskdUrl;
           download_dir = cfg.downloadDir;
         };
+        "Download Settings".stage_downloads = cfg.stageDownloads;
       }
       // lib.optionalAttrs (cfg.logDir != null) {
         Logging.log_file = "${cfg.logDir}/soularr.log";
       };
+
+      package =
+        if cfg.patches.leave-downloads-in-place then
+          cfg.package.overrideAttrs (old: {
+            patches = (old.patches or [ ]) ++ [ leaveDownloadsInPlacePatch ];
+          })
+        else
+          cfg.package;
 
       settings = lib.recursiveUpdate typedSettings cfg.settings;
       settingsFile = pkgs.writeText "soularr-settings.json" (builtins.toJSON settings);
@@ -200,6 +233,10 @@ mkDotsModule {
           assertion = lib.length (lib.unique envNames) == lib.length envNames;
           message = "dots.system.services.download.soularr.secretEnv paths must map to distinct environment names.";
         }
+        {
+          assertion = cfg.stageDownloads || cfg.patches.leave-downloads-in-place;
+          message = "dots.system.services.download.soularr.stageDownloads = false requires patches.leave-downloads-in-place = true.";
+        }
       ];
 
       systemd = {
@@ -240,7 +277,7 @@ mkDotsModule {
               ExecStart = lib.escapeShellArgs [
                 (toString loop)
                 (toString cfg.interval)
-                "${cfg.package}/bin/soularr"
+                "${package}/bin/soularr"
                 "--config-dir"
                 "/run/soularr"
                 "--var-dir"
