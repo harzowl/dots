@@ -167,6 +167,19 @@ mkDotsModule {
         default = [ ];
         description = "Patch files applied to the bundled Jellyfin web UI index.html when SSO is enabled.";
       };
+
+      pluginRepositories = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              name = lib.mkOption { type = lib.types.str; };
+              url = lib.mkOption { type = lib.types.str; };
+            };
+          }
+        );
+        default = [ ];
+        description = "Jellyfin plugin repositories written to `system.xml` before the container starts.";
+      };
     };
 
   toConfig =
@@ -192,7 +205,14 @@ mkDotsModule {
 
       pluginDir = "SSO-Auth_${cfg.sso.pluginVersion}";
       renderer = pkgs.writeText "jellyfin-render-sso.py" (builtins.readFile ./render-sso.py);
+      repositoriesRenderer = pkgs.writeText "jellyfin-render-repositories.py" (
+        builtins.readFile ./render-repositories.py
+      );
+      repositoriesJson = pkgs.writeText "jellyfin-repositories.json" (
+        builtins.toJSON cfg.pluginRepositories
+      );
       ssoConfigService = "${cfg.name}-sso-config";
+      repositoriesService = "${cfg.name}-repositories";
 
       patchedIndex =
         if cfg.sso.enable && cfg.patches != [ ] then
@@ -279,6 +299,25 @@ mkDotsModule {
         systemd.services."docker-${cfg.name}" = {
           after = [ "${ssoConfigService}.service" ];
           requires = [ "${ssoConfigService}.service" ];
+        };
+      })
+
+      (lib.mkIf (cfg.pluginRepositories != [ ]) {
+        systemd.services.${repositoriesService} = {
+          description = "Write Jellyfin plugin repositories";
+          after = [ "systemd-tmpfiles-setup.service" ];
+          before = [ "docker-${cfg.name}.service" ];
+          requiredBy = [ "docker-${cfg.name}.service" ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            ExecStart = "${pkgs.python3}/bin/python3 ${repositoriesRenderer} --config ${cfg.configDir}/config/system.xml --repositories ${repositoriesJson} --owner ${cfg.dataOwner}";
+          };
+        };
+
+        systemd.services."docker-${cfg.name}" = {
+          after = [ "${repositoriesService}.service" ];
+          requires = [ "${repositoriesService}.service" ];
         };
       })
     ];
