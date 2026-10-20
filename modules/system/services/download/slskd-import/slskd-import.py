@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Import completed slskd albums into beets.
 
-Each top-level directory under the complete tree is a Soulseek user. slskd
-mirrors the peer's path below `<user>/directories`, and incomplete downloads
-below the incomplete tree, where the `directories` segment is absent. The
-importer walks the completed trees, finds the directories that hold an album,
-and hands settled albums to `beet import`.
+slskd mirrors each peer's path below `<user>/directories`, and incomplete
+downloads below the incomplete tree, where the `directories` segment is absent.
+The importer walks the completed user trees, finds the directories that hold an
+album, and hands settled albums to `beet import`. With `--top-level-albums`, a
+top-level directory without that segment is an album root too: an album staged
+there by another tool, or a legacy flat download.
 
 An album is attempted at most once: every outcome (imported, duplicate/skip or
 error) is recorded in a `.slskd-imported` marker inside the album directory, and
@@ -238,6 +239,7 @@ def main():
     parser.add_argument("--incomplete", required=True, type=Path)
     parser.add_argument("--beet", required=True)
     parser.add_argument("--settle", type=int, default=120)
+    parser.add_argument("--top-level-albums", action="store_true")
     args = parser.parse_args()
 
     if not args.complete.is_dir():
@@ -260,15 +262,16 @@ def main():
 
         top = Path(entry.path)
         try:
-            if has_audio_directly(top):
+            directories = top / "directories"
+            if directories.is_dir():
+                roots = sorted(album_roots(directories))
+            elif args.top_level_albums:
+                roots = sorted(album_roots(top))
+            elif has_audio_directly(top):
                 print(f"skip legacy {top}: audio directly under the user directory")
                 continue
-
-            directories = top / "directories"
-            if not directories.is_dir():
+            else:
                 continue
-
-            roots = sorted(album_roots(directories))
         except OSError as error:
             print(f"skip unreadable {top}: {error}", file=sys.stderr)
             continue

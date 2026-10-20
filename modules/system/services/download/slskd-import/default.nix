@@ -23,6 +23,17 @@ mkDotsModule {
         description = "Completed-download root, with one directory per Soulseek user.";
       };
 
+      topLevelAlbums = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Treat a top-level directory without a `directories` subdirectory as an
+          album root, so an album staged in the download root (or a legacy flat
+          download) is imported and pruned rather than skipped. Off by default:
+          a top-level directory is normally a Soulseek user.
+        '';
+      };
+
       incompleteDir = lib.mkOption {
         type = lib.types.str;
         description = "slskd's incomplete-download root, used to skip albums still in progress.";
@@ -81,18 +92,21 @@ mkDotsModule {
             TimeoutStartSec = "infinity";
             NoNewPrivileges = true;
             PrivateTmp = true;
-            ExecStart = lib.escapeShellArgs [
-              "${pkgs.python3}/bin/python3"
-              (toString script)
-              "--complete"
-              cfg.completeDir
-              "--incomplete"
-              cfg.incompleteDir
-              "--beet"
-              "${cfg.beetsPackage}/bin/beet"
-              "--settle"
-              (toString cfg.settleSeconds)
-            ];
+            ExecStart = lib.escapeShellArgs (
+              [
+                "${pkgs.python3}/bin/python3"
+                (toString script)
+                "--complete"
+                cfg.completeDir
+                "--incomplete"
+                cfg.incompleteDir
+                "--beet"
+                "${cfg.beetsPackage}/bin/beet"
+                "--settle"
+                (toString cfg.settleSeconds)
+              ]
+              ++ lib.optional cfg.topLevelAlbums "--top-level-albums"
+            );
           };
         };
 

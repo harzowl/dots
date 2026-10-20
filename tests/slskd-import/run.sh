@@ -66,7 +66,8 @@ run_import() {
     --complete "$1" \
     --incomplete "$tmp/incomplete" \
     --beet "$2" \
-    --settle 0
+    --settle 0 \
+    "${@:3}"
 }
 
 bash_path=$(command -v bash)
@@ -141,6 +142,39 @@ fi
 check "normal import moved audio" 2 "$(find "$IMPORTED_DIR" -name '*.flac' | wc -l)"
 check_absent "normal import pruned album" "$album"
 check_absent "normal import pruned empty parents" "$complete/dummy-user"
+
+# Without the flag a top-level album is still a legacy user root and is skipped.
+complete="$tmp/legacy/complete"
+album="$complete/Artist - Album (2020)"
+make_album "$album"
+: >"$BEET_LOG"
+if run_import "$complete" "$tmp/beet-import" >"$tmp/legacy.out" 2>&1; then
+  passed=$((passed + 1))
+else
+  echo "FAIL legacy: importer exited non-zero" >&2
+  failed=$((failed + 1))
+fi
+check "legacy top-level skipped" 1 "$(grep -c 'skip legacy' "$tmp/legacy.out")"
+check "legacy top-level not imported" 0 "$(wc -l <"$BEET_LOG")"
+check "legacy top-level kept" 1 "$(test -d "$album" && echo 1 || echo 0)"
+
+# A staged album has no `directories` segment: with the flag, a top-level
+# directory that holds audio is an album root and is imported and pruned.
+complete="$tmp/staged/complete"
+album="$complete/Artist - Album (2020)"
+make_album "$album"
+export IMPORTED_DIR="$tmp/staged/imported"
+mkdir -p "$IMPORTED_DIR"
+: >"$BEET_LOG"
+if run_import "$complete" "$tmp/beet-import" --top-level-albums >"$tmp/staged.out" 2>&1; then
+  passed=$((passed + 1))
+else
+  echo "FAIL staged: importer exited non-zero" >&2
+  cat "$tmp/staged.out" >&2
+  failed=$((failed + 1))
+fi
+check "staged import moved audio" 2 "$(find "$IMPORTED_DIR" -name '*.flac' | wc -l)"
+check_absent "staged import pruned album" "$album"
 
 # Genuine per-album error: logged, marked, and the run still succeeds.
 complete="$tmp/error/complete"
