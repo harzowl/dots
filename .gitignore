@@ -10,3 +10,6 @@ result-*
 
 # Ignore OhMyOpencode
 .omo
+# Ignore Python bytecode
+__pycache__/
+*.pyc
