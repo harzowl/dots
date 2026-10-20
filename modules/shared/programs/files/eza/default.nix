@@ -65,7 +65,7 @@ mkSharedProgram {
         '';
       };
 
-      aliasLs = lib.mkOption {
+      lsAlias = lib.mkOption {
         type = lib.types.bool;
         default = false;
         description = "Define `ls` as an alias for `eza` in every shell.";
@@ -86,25 +86,13 @@ mkSharedProgram {
             ;
         };
       }
-      (args.lib.mkIf cfg.aliasLs (
-        mkShellAlias {
-          aliases = {
-            ls = "eza";
-          };
-        } args
-      ))
+      (args.lib.mkIf cfg.lsAlias (mkShellAlias { aliases.ls = "eza"; } args))
     ];
 
   system =
     args: cfg:
     args.lib.mkMerge [
       { environment.systemPackages = [ cfg.package ]; }
-      (args.lib.mkIf cfg.aliasLs (
-        mkShellAlias {
-          aliases = {
-            ls = "eza";
-          };
-        } args
-      ))
+      (args.lib.mkIf cfg.lsAlias (mkShellAlias { aliases.ls = "eza"; } args))
     ];
 }

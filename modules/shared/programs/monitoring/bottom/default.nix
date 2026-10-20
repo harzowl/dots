@@ -8,9 +8,7 @@
 let
   mkSharedProgram = import ../../../../../lib/mkSharedProgram.nix;
   mkShellAlias = import ../../../../../lib/mkShellAlias.nix;
-  htopAlias = {
-    htop = "btm -b";
-  };
+  htopShellAlias.htop = "btm -b";
 in
 mkSharedProgram {
   inherit target root;
@@ -36,7 +34,7 @@ mkSharedProgram {
         description = "bottom configuration, forwarded to `programs.bottom.settings` on the home target. Per-user settings shadow the system install.";
       };
 
-      aliasHtop = lib.mkOption {
+      htopAlias = lib.mkOption {
         type = lib.types.bool;
         default = false;
         description = "Define `htop` as an alias for `btm -b` in every shell.";
@@ -52,13 +50,13 @@ mkSharedProgram {
           inherit (cfg) package settings;
         };
       }
-      (args.lib.mkIf cfg.aliasHtop (mkShellAlias { aliases = htopAlias; } args))
+      (args.lib.mkIf cfg.htopAlias (mkShellAlias { aliases = htopShellAlias; } args))
     ];
 
   system =
     args: cfg:
     args.lib.mkMerge [
       { environment.systemPackages = [ cfg.package ]; }
-      (args.lib.mkIf cfg.aliasHtop (mkShellAlias { aliases = htopAlias; } args))
+      (args.lib.mkIf cfg.htopAlias (mkShellAlias { aliases = htopShellAlias; } args))
     ];
 }

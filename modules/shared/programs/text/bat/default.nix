@@ -33,7 +33,7 @@ mkSharedProgram {
         description = "bat flags written to its config (`programs.bat.config` on the home target).";
       };
 
-      aliasCat = lib.mkOption {
+      catAlias = lib.mkOption {
         type = lib.types.bool;
         default = false;
         description = "Define `cat` as an alias for `bat` in every shell.";
@@ -49,25 +49,13 @@ mkSharedProgram {
           inherit (cfg) package config;
         };
       }
-      (args.lib.mkIf cfg.aliasCat (
-        mkShellAlias {
-          aliases = {
-            cat = "bat";
-          };
-        } args
-      ))
+      (args.lib.mkIf cfg.catAlias (mkShellAlias { aliases.cat = "bat"; } args))
     ];
 
   system =
     args: cfg:
     args.lib.mkMerge [
       { environment.systemPackages = [ cfg.package ]; }
-      (args.lib.mkIf cfg.aliasCat (
-        mkShellAlias {
-          aliases = {
-            cat = "bat";
-          };
-        } args
-      ))
+      (args.lib.mkIf cfg.catAlias (mkShellAlias { aliases.cat = "bat"; } args))
     ];
 }
