@@ -213,6 +213,16 @@ mkDotsModule {
       );
       ssoConfigService = "${cfg.name}-sso-config";
       repositoriesService = "${cfg.name}-repositories";
+      pluginsService = "${cfg.name}-plugins";
+
+      installPlugin = pkgs.writeShellScript "jellyfin-install-sso-plugin" ''
+        set -eu
+        rm -rf ${cfg.configDir}/plugins/SSO-Auth_*
+        mkdir -p ${cfg.configDir}/plugins/${pluginDir}
+        cp -a ${ssoPlugin}/. ${cfg.configDir}/plugins/${pluginDir}/
+        chown -R ${cfg.dataOwner} ${cfg.configDir}/plugins/${pluginDir}
+        chmod -R u+w ${cfg.configDir}/plugins/${pluginDir}
+      '';
 
       patchedIndex =
         if cfg.sso.enable && cfg.patches != [ ] then
@@ -230,7 +240,6 @@ mkDotsModule {
         "${cfg.cacheDir}:/cache"
         "${cfg.mediaDir}:/media:ro"
       ]
-      ++ lib.optional cfg.sso.enable "${ssoPlugin}:/config/plugins/${pluginDir}:ro"
       ++ lib.optional (
         patchedIndex != null
       ) "${patchedIndex}/index.html:/jellyfin/jellyfin-web/index.html:ro"
@@ -264,60 +273,82 @@ mkDotsModule {
       }
 
       (lib.mkIf cfg.sso.enable {
-        systemd.services.${ssoConfigService} = {
-          description = "Render Jellyfin SSO-Auth configuration";
-          after = [ "secretspec.service" ];
-          wants = [ "secretspec.service" ];
-          before = [ "docker-${cfg.name}.service" ];
-          requiredBy = [ "docker-${cfg.name}.service" ];
-          environment = {
-            JELLYFIN_SSO_PROVIDER = cfg.sso.provider;
-            JELLYFIN_SSO_ENDPOINT = cfg.sso.endpoint;
-            JELLYFIN_SSO_CLIENT_ID = cfg.sso.clientId;
-            JELLYFIN_SSO_SECRET_ENV = cfg.sso.clientSecretEnv;
-            JELLYFIN_SSO_CONFIG_DIR = cfg.configDir;
-            JELLYFIN_SSO_OWNER = cfg.dataOwner;
-            JELLYFIN_SSO_SCHEME = cfg.sso.schemeOverride;
-            JELLYFIN_SSO_PORT = if cfg.sso.portOverride != null then toString cfg.sso.portOverride else "";
-            JELLYFIN_SSO_NEW_PATH = lib.boolToString cfg.sso.newPath;
-            JELLYFIN_SSO_DISABLE_PUSHED_AUTHORIZATION = lib.boolToString cfg.sso.disablePushedAuthorization;
-            JELLYFIN_SSO_ENABLE_AUTHORIZATION = lib.boolToString cfg.sso.enableAuthorization;
-            JELLYFIN_SSO_ENABLE_ALL_FOLDERS = lib.boolToString cfg.sso.enableAllFolders;
-            JELLYFIN_SSO_ADMIN_ROLES = lib.concatStringsSep "," cfg.sso.adminRoles;
-            JELLYFIN_SSO_ROLES = lib.concatStringsSep "," cfg.sso.roles;
-            JELLYFIN_SSO_ROLE_CLAIM = cfg.sso.roleClaim;
-            JELLYFIN_SSO_SCOPES = lib.concatStringsSep "," cfg.sso.scopes;
+        systemd.services = {
+          ${ssoConfigService} = {
+            description = "Render Jellyfin SSO-Auth configuration";
+            after = [ "secretspec.service" ];
+            wants = [ "secretspec.service" ];
+            before = [ "docker-${cfg.name}.service" ];
+            requiredBy = [ "docker-${cfg.name}.service" ];
+            environment = {
+              JELLYFIN_SSO_PROVIDER = cfg.sso.provider;
+              JELLYFIN_SSO_ENDPOINT = cfg.sso.endpoint;
+              JELLYFIN_SSO_CLIENT_ID = cfg.sso.clientId;
+              JELLYFIN_SSO_SECRET_ENV = cfg.sso.clientSecretEnv;
+              JELLYFIN_SSO_CONFIG_DIR = cfg.configDir;
+              JELLYFIN_SSO_OWNER = cfg.dataOwner;
+              JELLYFIN_SSO_SCHEME = cfg.sso.schemeOverride;
+              JELLYFIN_SSO_PORT = if cfg.sso.portOverride != null then toString cfg.sso.portOverride else "";
+              JELLYFIN_SSO_NEW_PATH = lib.boolToString cfg.sso.newPath;
+              JELLYFIN_SSO_DISABLE_PUSHED_AUTHORIZATION = lib.boolToString cfg.sso.disablePushedAuthorization;
+              JELLYFIN_SSO_ENABLE_AUTHORIZATION = lib.boolToString cfg.sso.enableAuthorization;
+              JELLYFIN_SSO_ENABLE_ALL_FOLDERS = lib.boolToString cfg.sso.enableAllFolders;
+              JELLYFIN_SSO_ADMIN_ROLES = lib.concatStringsSep "," cfg.sso.adminRoles;
+              JELLYFIN_SSO_ROLES = lib.concatStringsSep "," cfg.sso.roles;
+              JELLYFIN_SSO_ROLE_CLAIM = cfg.sso.roleClaim;
+              JELLYFIN_SSO_SCOPES = lib.concatStringsSep "," cfg.sso.scopes;
+            };
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              EnvironmentFile = [ cfg.sso.secretFile ];
+              ExecStart = "${pkgs.python3}/bin/python3 ${renderer}";
+            };
           };
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            EnvironmentFile = [ cfg.sso.secretFile ];
-            ExecStart = "${pkgs.python3}/bin/python3 ${renderer}";
-          };
-        };
 
-        systemd.services."docker-${cfg.name}" = {
-          after = [ "${ssoConfigService}.service" ];
-          requires = [ "${ssoConfigService}.service" ];
+          ${pluginsService} = {
+            description = "Install the Jellyfin SSO-Auth plugin";
+            after = [ "systemd-tmpfiles-setup.service" ];
+            before = [ "docker-${cfg.name}.service" ];
+            requiredBy = [ "docker-${cfg.name}.service" ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              ExecStart = installPlugin;
+            };
+          };
+
+          "docker-${cfg.name}" = {
+            after = [
+              "${ssoConfigService}.service"
+              "${pluginsService}.service"
+            ];
+            requires = [
+              "${ssoConfigService}.service"
+              "${pluginsService}.service"
+            ];
+          };
         };
       })
 
       (lib.mkIf (cfg.pluginRepositories != [ ]) {
-        systemd.services.${repositoriesService} = {
-          description = "Write Jellyfin plugin repositories";
-          after = [ "systemd-tmpfiles-setup.service" ];
-          before = [ "docker-${cfg.name}.service" ];
-          requiredBy = [ "docker-${cfg.name}.service" ];
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            ExecStart = "${pkgs.python3}/bin/python3 ${repositoriesRenderer} --config ${cfg.configDir}/config/system.xml --repositories ${repositoriesJson} --owner ${cfg.dataOwner}";
+        systemd.services = {
+          ${repositoriesService} = {
+            description = "Write Jellyfin plugin repositories";
+            after = [ "systemd-tmpfiles-setup.service" ];
+            before = [ "docker-${cfg.name}.service" ];
+            requiredBy = [ "docker-${cfg.name}.service" ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              ExecStart = "${pkgs.python3}/bin/python3 ${repositoriesRenderer} --config ${cfg.configDir}/config/system.xml --repositories ${repositoriesJson} --owner ${cfg.dataOwner}";
+            };
           };
-        };
 
-        systemd.services."docker-${cfg.name}" = {
-          after = [ "${repositoriesService}.service" ];
-          requires = [ "${repositoriesService}.service" ];
+          "docker-${cfg.name}" = {
+            after = [ "${repositoriesService}.service" ];
+            requires = [ "${repositoriesService}.service" ];
+          };
         };
       })
     ];
