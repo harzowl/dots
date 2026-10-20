@@ -139,6 +139,12 @@ mkDotsModule {
               description = "Claim path holding the provider roles, e.g. `realm_access.roles`.";
             };
 
+            disablePushedAuthorization = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Disable PAR in the SSO plugin. Keycloak rejects the plugin's PAR request; PKCE remains enabled.";
+            };
+
             pluginVersion = lib.mkOption {
               type = lib.types.str;
               default = "5.1.1";
@@ -234,6 +240,7 @@ mkDotsModule {
             JELLYFIN_SSO_SCHEME = cfg.sso.schemeOverride;
             JELLYFIN_SSO_PORT = toString cfg.sso.portOverride;
             JELLYFIN_SSO_NEW_PATH = lib.boolToString cfg.sso.newPath;
+            JELLYFIN_SSO_DISABLE_PUSHED_AUTHORIZATION = lib.boolToString cfg.sso.disablePushedAuthorization;
             JELLYFIN_SSO_ENABLE_AUTHORIZATION = lib.boolToString cfg.sso.enableAuthorization;
             JELLYFIN_SSO_ENABLE_ALL_FOLDERS = lib.boolToString cfg.sso.enableAllFolders;
             JELLYFIN_SSO_ADMIN_ROLES = lib.concatStringsSep "," cfg.sso.adminRoles;
