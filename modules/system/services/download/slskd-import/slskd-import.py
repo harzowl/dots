@@ -287,7 +287,8 @@ def remove_torrents(albums, url, username, password, mappings):
     request = urllib.request.Request(f"{base}/api/v2/auth/login", data=login)
     try:
         with opener.open(request, timeout=15) as response:
-            if response.read().decode().strip() != "Ok.":
+            body = response.read().decode().strip()
+            if response.status != 204 and body != "Ok.":
                 print("qBittorrent login failed", file=sys.stderr)
                 return
         with opener.open(f"{base}/api/v2/torrents/info", timeout=15) as response:

@@ -249,7 +249,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length).decode()
         if self.path == "/api/v2/auth/login":
-            self.reply(b"Ok.")
+            self.send_response(204)
+            self.end_headers()
         elif self.path == "/api/v2/torrents/delete":
             with open(log_file, "a", encoding="utf-8") as log:
                 log.write(body + "\n")
