@@ -60,6 +60,7 @@ make_album() {
   : >"$album/02 - Track.flac"
   : >"$album/cover.jpg"
   : >"$album/playlist.m3u"
+  : >"$album/album.torrent"
 }
 
 run_import() {

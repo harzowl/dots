@@ -78,6 +78,7 @@ SIDECAR_SUFFIXES = {
     ".nfo",
     ".png",
     ".sfv",
+    ".torrent",
     ".txt",
 }
 
