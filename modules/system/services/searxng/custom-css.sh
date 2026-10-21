@@ -8,6 +8,8 @@ found=0
 for file in "$theme"/sxng-ltr.min.css "$theme"/sxng-rtl.min.css; do
   [ -f "$file" ] || continue
   found=1
+  # WhiteNoise prefers these stale variants over the appended stylesheet.
+  rm -f "$file".gz "$file".br "$file".zst
   if grep -qF "$marker" "$file"; then
     continue
   fi
