@@ -48,12 +48,41 @@ mkDotsModule {
           owned by root, which the container then cannot write.
         '';
       };
+
+      localPlugins = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "Directory of local flow plugins, mounted at `LocalFlowPlugins`.";
+      };
+
+      patches = lib.mkOption {
+        type = lib.types.listOf lib.types.path;
+        default = [ ];
+        description = "Patches applied to the local flow-plugin tree before it is mounted.";
+      };
+
+      abAv1 = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Mount the static ab-av1 binary at `/usr/local/bin/ab-av1`.";
+      };
     };
 
   toConfig =
     args: cfg:
     let
-      inherit (args) config lib;
+      inherit (args) config lib pkgs;
+
+      patchedPlugins =
+        if cfg.localPlugins == null then
+          null
+        else
+          pkgs.runCommand "tdarr-local-plugins" { nativeBuildInputs = [ pkgs.patch ]; } ''
+            cp -r ${cfg.localPlugins} $out
+            chmod -R u+w $out
+            ${lib.concatMapStringsSep "\n" (p: "patch -p1 -d $out < ${p}") cfg.patches}
+          '';
+
       spec = cfg // {
         volumes = [
           "${cfg.dataDir}/server:/app/server"
@@ -61,7 +90,11 @@ mkDotsModule {
           "${cfg.dataDir}/logs:/app/logs"
           "${cfg.cacheDir}:/temp"
           "${cfg.mediaDir}:/media"
-        ];
+        ]
+        ++ lib.optional cfg.abAv1 "${pkgs.pkgsStatic.ab-av1}/bin/ab-av1:/usr/local/bin/ab-av1:ro"
+        ++ lib.optional (
+          patchedPlugins != null
+        ) "${patchedPlugins}:/app/server/Tdarr/Plugins/FlowPlugins/LocalFlowPlugins:ro";
         settings = cfg.settings // {
           PUID = lib.head (lib.splitString ":" cfg.dataOwner);
           PGID = lib.elemAt (lib.splitString ":" cfg.dataOwner) 1;
