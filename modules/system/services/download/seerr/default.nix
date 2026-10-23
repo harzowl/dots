@@ -46,6 +46,15 @@ mkDotsModule {
           a bare container-level name. Rendered as `docker --add-host`.
         '';
       };
+
+      hostname = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Container hostname. SMTP clients send it as their EHLO name, so it
+          must be a domain name when the relay rejects a bare container id.
+        '';
+      };
     };
 
   toConfig =
@@ -61,6 +70,7 @@ mkDotsModule {
             "--init"
           ]
           ++ lib.mapAttrsToList (name: address: "--add-host=${name}:${address}") cfg.extraHosts
+          ++ lib.optional (cfg.hostname != null) "--hostname=${cfg.hostname}"
           ++ cfg.extraOptions;
         };
         inherit defaults;
