@@ -10,12 +10,16 @@ let
   driverPackage =
     if cfg.package != null then
       cfg.package
-    else if cfg.driverVersion != null then
+    else if cfg.driver != null then
+      let
+        repoPath = if cfg.driver.repo == "tesla" then "tesla" else "XFree86/Linux-x86_64";
+      in
       pkgs.linuxPackages.nvidiaPackages.mkDriver {
-        version = cfg.driverVersion;
-        sha256_64bit = cfg.driverSha256;
+        version = cfg.driver.version;
+        sha256_64bit = cfg.driver.sha256;
         useSettings = false;
         usePersistenced = false;
+        url = "https://us.download.nvidia.com/${repoPath}/${cfg.driver.version}/NVIDIA-Linux-x86_64-${cfg.driver.version}.run";
       }
     else
       config.boot.kernelPackages.nvidiaPackages.stable;
@@ -28,27 +32,40 @@ in
       type = lib.types.nullOr lib.types.package;
       default = null;
       description = ''
-        NVIDIA driver package. Takes precedence over `driverVersion`.
+        NVIDIA driver package. Mutually exclusive with `driver`.
         When running in an LXC container, this is the userspace driver, and its
         version must match the kernel driver on the Proxmox host.
       '';
     };
 
-    driverVersion = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      example = "610.57.04";
-      description = ''
-        NVIDIA userspace driver version to fetch with
-        `nvidiaPackages.mkDriver`. Use this when the host driver is newer than
-        nixpkgs' stable package.
-      '';
-    };
+    driver = lib.mkOption {
+      type = lib.types.nullOr (
+        lib.types.submodule {
+          options = {
+            version = lib.mkOption {
+              type = lib.types.str;
+              example = "615.71.10";
+              description = "NVIDIA userspace driver version to fetch with `nvidiaPackages.mkDriver`.";
+            };
 
-    driverSha256 = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
+            sha256 = lib.mkOption {
+              type = lib.types.str;
+              description = "SRI hash of the NVIDIA `.run` file for `version`.";
+            };
+
+            repo = lib.mkOption {
+              type = lib.types.enum [
+                "XFree86"
+                "tesla"
+              ];
+              default = "XFree86";
+              description = "NVIDIA download channel: `XFree86` for GeForce/Quadro, `tesla` for data-centre releases.";
+            };
+          };
+        }
+      );
       default = null;
-      description = "SRI hash of the NVIDIA `.run` file for `driverVersion`.";
+      description = "NVIDIA userspace driver to fetch with `nvidiaPackages.mkDriver`.";
     };
 
     containerToolkit = lib.mkOption {
@@ -61,12 +78,8 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = (cfg.driverVersion == null) == (cfg.driverSha256 == null);
-        message = "dots.system.hardware.nvidia: set both driverVersion and driverSha256, or neither.";
-      }
-      {
-        assertion = cfg.package == null || cfg.driverVersion == null;
-        message = "dots.system.hardware.nvidia: package and driverVersion are mutually exclusive.";
+        assertion = cfg.package == null || cfg.driver == null;
+        message = "dots.system.hardware.nvidia: package and driver are mutually exclusive.";
       }
     ];
 
