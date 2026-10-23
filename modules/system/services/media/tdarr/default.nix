@@ -102,6 +102,8 @@ mkDotsModule {
         };
         # Tdarr reads these camelCase names; the settings option would upper-snake them.
         extraOptions = cfg.extraOptions ++ [
+          "--add-host"
+          "host.docker.internal:host-gateway"
           "--env"
           "internalNode=true"
           "--env"
