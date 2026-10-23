@@ -6,6 +6,7 @@
     ./prowlarr
     ./qbittorrent
     ./radarr
+    ./seerr
     ./slskd
     ./slskd-import
     ./sonarr
