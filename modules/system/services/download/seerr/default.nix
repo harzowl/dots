@@ -41,7 +41,7 @@ mkDotsModule {
   toConfig =
     args: cfg:
     let
-      inherit (args) lib;
+      inherit (args) lib pkgs;
     in
     lib.mkMerge [
       (mkDockerService.config {
@@ -53,9 +53,12 @@ mkDotsModule {
       } args)
 
       {
-        systemd.tmpfiles.rules = [
-          "d '${cfg.configDir}' 0755 ${cfg.dataOwner} - -"
-        ];
+        # Docker creates a missing bind-mount source as root, before the
+        # container can write to it; own it before every start.
+        systemd.services."${cfg.backend}-${cfg.name}".preStart = ''
+          ${pkgs.coreutils}/bin/install -d -m 0755 '${cfg.configDir}'
+          ${pkgs.coreutils}/bin/chown ${cfg.dataOwner} '${cfg.configDir}'
+        '';
       }
     ];
 }
