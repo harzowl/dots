@@ -2,6 +2,7 @@
   imports = [
     ./core
     ./docker
+    ./hardware
     ./host-type
     ./lxc
     ./memory
