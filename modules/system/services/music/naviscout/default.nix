@@ -103,6 +103,21 @@ mkDotsModule {
         Delay between restarts. Null keeps naviscout's default.
       '';
 
+      startLimitBurst = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 5;
+        description = ''
+          Restarts allowed within `startLimitIntervalSec` before systemd marks
+          the unit failed. Bounds an OOM-kill loop so it cannot thrash the host.
+        '';
+      };
+
+      startLimitIntervalSec = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 600;
+        description = "Window (seconds) over which `startLimitBurst` is counted.";
+      };
+
       openFirewall = inherited (lib.types.nullOr lib.types.bool) ''
         Open the listening port in the host firewall. Null keeps naviscout's
         default.
@@ -129,9 +144,7 @@ mkDotsModule {
       secretEnv = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = { };
-        example = {
-          NAVISCOUT_LIDARR_API_KEY = "LIDARR_API_KEY";
-        };
+        example.NAVISCOUT_LIDARR_API_KEY = "LIDARR_API_KEY";
         description = ''
           Map a `NAVISCOUT_*` env name to a neutral secret name looked up in
           `environmentFiles`. The values are re-emitted into a runtime dotenv,
@@ -164,13 +177,9 @@ mkDotsModule {
         dbPath = opt lib.types.str "Path to Navidrome's SQLite database, read for Last.fm metadata.";
       };
 
-      coverArt = {
-        url = opt lib.types.str "Cover Art Archive base URL.";
-      };
+      coverArt.url = opt lib.types.str "Cover Art Archive base URL.";
 
-      deezer = {
-        url = opt lib.types.str "Deezer API base URL.";
-      };
+      deezer.url = opt lib.types.str "Deezer API base URL.";
 
       cover = {
         sourceOrder = optList (lib.types.enum [
@@ -188,9 +197,7 @@ mkDotsModule {
         waitTimeout = opt lib.types.str "Longest a request waits for a cover (a Go duration).";
       };
 
-      coverCache = {
-        maxBytes = opt lib.types.ints.unsigned "Rotation budget for cached cover art, in bytes.";
-      };
+      coverCache.maxBytes = opt lib.types.ints.unsigned "Rotation budget for cached cover art, in bytes.";
 
       lidarr = {
         url = opt lib.types.str "Lidarr API base URL.";
@@ -203,9 +210,7 @@ mkDotsModule {
         ]) "How much of an added artist Lidarr monitors.";
       };
 
-      playback = {
-        enable = opt lib.types.bool "Enable playback of catalogue tracks through yt-dlp.";
-      };
+      playback.enable = opt lib.types.bool "Enable playback of catalogue tracks through yt-dlp.";
 
       ytdlp = {
         binary = opt lib.types.str "yt-dlp executable.";
@@ -554,6 +559,12 @@ mkDotsModule {
         systemd.services.${serviceName} = lib.mkIf remapEnabled {
           after = [ "${remap.unitName}.service" ];
           wants = [ "${remap.unitName}.service" ];
+        };
+      }
+
+      {
+        systemd.services.${serviceName} = {
+          inherit (cfg) startLimitBurst startLimitIntervalSec;
         };
       }
 
