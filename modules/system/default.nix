@@ -1,6 +1,7 @@
 {
   imports = [
     ./core
+    ./docker
     ./host-type
     ./lxc
     ./memory

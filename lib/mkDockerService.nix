@@ -1,4 +1,16 @@
+let
+  memoryLimitOption =
+    { lib }:
+    lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "3g";
+      description = "Docker `--memory` limit for the container.";
+    };
+in
 {
+  inherit memoryLimitOption;
+
   options =
     {
       lib,
@@ -22,7 +34,7 @@
 
       image = opt "image" {
         type = lib.types.str;
-        description = "OCI image reference, e.g. `itzg/minecraft-server:latest`.";
+        description = "OCI image reference, e.g. `ghcr.io/example/service:latest`.";
       };
 
       backend = opt "backend" {
@@ -84,7 +96,7 @@
           The container's environment variables, in camelCase — each key is
           mapped to its upper-snake form (`someKey` -> `SOME_KEY`). Values are
           stringified: `true`/`false`, numbers, and lists (comma-joined), so
-          `{ maxPlayers = 10; onlineMode = false; whitelist = [ "a" "b" ]; }`
+          `{ timezone = "UTC"; maxConnections = 10; debug = false; allow = [ "a" "b" ]; }`
           works.
         '';
       };
@@ -110,6 +122,14 @@
         default = [ ];
         description = "Extra `docker`/`podman` run arguments.";
       };
+
+      gpuPassthrough = opt "gpuPassthrough" {
+        type = lib.types.bool;
+        default = false;
+        description = "Pass the host's configured Docker GPU mode into this container.";
+      };
+
+      memoryLimit = memoryLimitOption { inherit lib; };
 
       environmentFiles = opt "environmentFiles" {
         type = lib.types.listOf lib.types.str;
@@ -243,7 +263,12 @@
       spec,
       defaults ? { },
     }:
-    { lib, pkgs, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     let
       settings = (defaults.settings or { }) // spec.settings;
 
@@ -264,6 +289,31 @@
           dockerMods = lib.concatStringsSep "|" spec.dockerMods;
         }
       );
+
+      gpuMode = config.dots.system.docker.gpu or null;
+      gpuEnabled = spec.gpuPassthrough or false;
+
+      gpuEnvironment =
+        lib.optionalAttrs (gpuEnabled && gpuMode == "nvidia") {
+          NVIDIA_VISIBLE_DEVICES = "all";
+          NVIDIA_DRIVER_CAPABILITIES = "compute,video,utility";
+        }
+        // lib.optionalAttrs (gpuEnabled && gpuMode == "intel") {
+          LIBVA_DRIVER_NAME = "iHD";
+        }
+        // lib.optionalAttrs (gpuEnabled && gpuMode == "amd") {
+          LIBVA_DRIVER_NAME = "radeonsi";
+        };
+
+      gpuOptions =
+        lib.optionals (gpuEnabled && gpuMode == "nvidia") [
+          "--device"
+          "nvidia.com/gpu=all"
+        ]
+        ++ lib.optionals (gpuEnabled && (gpuMode == "intel" || gpuMode == "amd")) [
+          "--device"
+          "/dev/dri:/dev/dri"
+        ];
 
       hostPort =
         p:
@@ -289,6 +339,11 @@
         ++ lib.optional managedNetwork "docker-network-${network.name}.service";
     in
     {
+      assertions = lib.optional gpuEnabled {
+        assertion = gpuMode != null;
+        message = "dots.system.docker.gpu must be set when gpuPassthrough is enabled.";
+      };
+
       virtualisation = {
         docker.enable = lib.mkIf (spec.backend == "docker") true;
 
@@ -302,7 +357,9 @@
               environmentFiles
               ;
             extraOptions =
-              spec.extraOptions
+              lib.optional ((spec.memoryLimit or null) != null) "--memory=${spec.memoryLimit}"
+              ++ gpuOptions
+              ++ spec.extraOptions
               ++ lib.optionals (network != null) (
                 [ "--network=${network.name}" ]
                 ++ lib.optionals (network.ip != null) [
@@ -311,7 +368,7 @@
                 ]
               );
             entrypoint = spec.entrypoint or null;
-            inherit environment;
+            environment = environment // gpuEnvironment;
             ports =
               map (
                 p:
