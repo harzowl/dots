@@ -36,6 +36,16 @@ mkDotsModule {
           container then cannot write.
         '';
       };
+
+      extraHosts = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = { };
+        example.jellyfin = "192.0.2.10";
+        description = ''
+          Extra hosts entries as `name = address`, so integrations can be given
+          a bare container-level name. Rendered as `docker --add-host`.
+        '';
+      };
     };
 
   toConfig =
@@ -47,7 +57,11 @@ mkDotsModule {
       (mkDockerService.config {
         spec = cfg // {
           volumes = [ "${cfg.configDir}:/app/config" ] ++ cfg.volumes;
-          extraOptions = [ "--init" ] ++ cfg.extraOptions;
+          extraOptions = [
+            "--init"
+          ]
+          ++ lib.mapAttrsToList (name: address: "--add-host=${name}:${address}") cfg.extraHosts
+          ++ cfg.extraOptions;
         };
         inherit defaults;
       } args)
