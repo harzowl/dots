@@ -102,6 +102,18 @@ mkDotsModule {
           keep an exact build across hosts.
         '';
       };
+
+      javaOptsAppend = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = ''
+          Extra JVM options appended after the image defaults. Use an explicit
+          heap when the JVM would otherwise size itself from the host's memory
+          instead of the container's.
+        '';
+      };
+
+      memoryLimit = mkDockerService.memoryLimitOption { inherit lib; };
     };
 
   toConfig =
@@ -215,7 +227,7 @@ mkDotsModule {
 
       keycloak = {
         name = "keycloak";
-        inherit (cfg) image;
+        inherit (cfg) image memoryLimit;
         backend = "docker";
         openFirewall = true;
         ports = [ ];
@@ -244,6 +256,9 @@ mkDotsModule {
         }
         // lib.optionalAttrs (cfg.hostnameAdmin != null) {
           kcHostnameAdmin = "https://${cfg.hostnameAdmin}";
+        }
+        // lib.optionalAttrs (cfg.javaOptsAppend != "") {
+          inherit (cfg) javaOptsAppend;
         };
       };
     in
