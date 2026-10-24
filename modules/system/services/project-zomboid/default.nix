@@ -57,14 +57,29 @@ mkDotsModule {
         '';
       };
 
-      listed = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
+      serverConfig = lib.mkOption {
+        type = lib.types.attrsOf (
+          lib.types.either lib.types.bool (lib.types.either lib.types.int lib.types.str)
+        );
+        default = { };
         description = ''
-          Whether the server advertises itself in the in-game browser. The
-          advert carries the address the server egresses from, so it must stay
-          off while the public entry is a different host unless the server also
-          egresses through it.
+          Project Zomboid server settings merged into the game-generated ini
+          before each start. Keys not listed here stay as the game wrote them.
+        '';
+      };
+
+      serverPasswordSecret = lib.mkOption {
+        type = lib.types.str;
+        default = "ZOMBOID_SERVER_PASSWORD";
+        description = "Secret name holding the shared server join password.";
+      };
+
+      serverPasswordFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = "/run/secretspec/${config.dots.system.services.games.project-zomboid.serverPasswordSecret}";
+        description = ''
+          File holding the shared server join password; merged into the ini as
+          `Password`. Null leaves the ini's existing `Password` untouched.
         '';
       };
 
@@ -153,10 +168,41 @@ mkDotsModule {
         mapping = cfg.secretEnv;
       };
 
-      iniDir = "${cfg.dataDir}/data/Server";
+      configDir = "${cfg.dataDir}/data/Server";
       serverName = cfg.settings.serverName or defaults.settings.serverName;
-      iniFile = "${iniDir}/${serverName}.ini";
-      listed = if cfg.listed then "true" else "false";
+      configFile = "${configDir}/${serverName}.ini";
+
+      configValue = v: if lib.isBool v then (if v then "true" else "false") else toString v;
+
+      publicEnabled =
+        let
+          value = cfg.serverConfig.Public or false;
+        in
+        if lib.isBool value then value else value == "true";
+
+      setConfig = key: value: ''
+        awk -v key=${lib.escapeShellArg key} -v value=${lib.escapeShellArg value} '
+          BEGIN { found = 0 }
+          index($0, key "=") == 1 { print key "=" value; found = 1; next }
+          { print }
+          END { if (!found) print key "=" value }
+        ' ${lib.escapeShellArg configFile} > ${lib.escapeShellArg (configFile + ".tmp")}
+        mv ${lib.escapeShellArg (configFile + ".tmp")} ${lib.escapeShellArg configFile}
+      '';
+
+      setPassword = lib.optionalString (cfg.serverPasswordFile != null) ''
+        if [ ! -s ${lib.escapeShellArg cfg.serverPasswordFile} ]; then
+          echo "Project Zomboid server password secret ${cfg.serverPasswordSecret} is missing" >&2
+          exit 1
+        fi
+        awk -v key=Password -v pwfile=${lib.escapeShellArg cfg.serverPasswordFile} '
+          BEGIN { getline password < pwfile; close(pwfile); found = 0 }
+          index($0, key "=") == 1 { print key "=" password; found = 1; next }
+          { print }
+          END { if (!found) print key "=" password }
+        ' ${lib.escapeShellArg configFile} > ${lib.escapeShellArg (configFile + ".tmp")}
+        mv ${lib.escapeShellArg (configFile + ".tmp")} ${lib.escapeShellArg configFile}
+      '';
 
       spec = cfg // {
         settings = cfg.settings // {
@@ -174,7 +220,7 @@ mkDotsModule {
 
       dependsOnUnits =
         map (d: if lib.hasSuffix ".service" d then d else "${cfg.backend}-${d}.service") cfg.dependsOn
-        ++ [ "${cfg.name}-ini.service" ]
+        ++ [ "${cfg.name}-config.service" ]
         ++ lib.optional (cfg.bindAddress != null) "wireguard-${meshInterface}.service";
     in
     lib.mkMerge [
@@ -191,10 +237,18 @@ mkDotsModule {
                 message = "dots.system.services.games.project-zomboid.secretEnv needs secretEnvSources to read the secrets from.";
               }
               {
-                assertion = !cfg.listed || config.dots.system.networking.wireguard.mesh.routeAll;
-                message = "dots.system.services.games.project-zomboid.listed requires the host to egress through the public entry (wireguard.mesh.routeAll = true); otherwise the advert names the host's direct address.";
+                assertion = !(cfg.serverConfig ? Password);
+                message = "dots.system.services.games.project-zomboid.serverConfig.Password is set from serverPasswordSecret; do not put it in ini.";
+              }
+              {
+                assertion = !publicEnabled || config.dots.system.networking.wireguard.mesh.routeAll;
+                message = "dots.system.services.games.project-zomboid.serverConfig.Public requires the host to egress through the public entry (wireguard.mesh.routeAll = true); otherwise the advert names the host's direct address.";
               }
             ];
+
+            dots.system.secretspec.secrets = lib.optional (
+              cfg.serverPasswordFile != null
+            ) cfg.serverPasswordSecret;
 
             systemd = {
               tmpfiles.rules = [
@@ -203,25 +257,27 @@ mkDotsModule {
               ];
 
               services = {
-                "${cfg.name}-ini" = {
-                  description = "Set the Project Zomboid server browser visibility";
+                "${cfg.name}-config" = {
+                  description = "Merge the Project Zomboid server settings";
                   wantedBy = [ "multi-user.target" ];
                   before = [ "${cfg.backend}-${cfg.name}.service" ];
                   path = [
                     pkgs.coreutils
-                    pkgs.gnugrep
-                    pkgs.gnused
+                    pkgs.gawk
                   ];
                   serviceConfig.Type = "oneshot";
                   script = ''
-                    mkdir -p ${lib.escapeShellArg iniDir}
-                    touch ${lib.escapeShellArg iniFile}
-                    if grep -q '^Public=' ${lib.escapeShellArg iniFile}; then
-                      sed -i 's/^Public=.*/Public=${listed}/' ${lib.escapeShellArg iniFile}
-                    else
-                      printf 'Public=%s\n' ${lib.escapeShellArg listed} >> ${lib.escapeShellArg iniFile}
-                    fi
+                    umask 077
+                    mkdir -p ${lib.escapeShellArg configDir}
+                    touch ${lib.escapeShellArg configFile}
+                    ${lib.concatStrings (lib.mapAttrsToList (k: v: setConfig k (configValue v)) cfg.serverConfig)}
+                    ${setPassword}
+                    chmod 600 ${lib.escapeShellArg configFile}
                   '';
+                }
+                // lib.optionalAttrs (cfg.serverPasswordFile != null) {
+                  after = [ "secretspec.service" ];
+                  requires = [ "secretspec.service" ];
                 };
 
                 ${remap.unitName} = remap.unit;
