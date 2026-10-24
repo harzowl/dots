@@ -20,9 +20,9 @@ mkDotsModule {
       };
 
       python = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
+        type = lib.types.nullOr lib.types.package;
         default = null;
-        description = "Python interpreter from an environment containing PaddleOCR-VL, pgsrip, FastAPI and Uvicorn.";
+        description = "Python environment containing PaddleOCR-VL dependencies. Defaults to a Nix-built environment.";
       };
 
       cacheDir = lib.mkOption {
@@ -49,6 +49,12 @@ mkDotsModule {
         description = "User running the OCR service.";
       };
 
+      cudaSupport = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Build the OCR Python environment with CUDA support.";
+      };
+
       libraryPath = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -65,6 +71,22 @@ mkDotsModule {
     cfg:
     let
       script = pkgs.writeText "paddle-ocr-server.py" (builtins.readFile ./server.py);
+      pgsrip = pkgs.callPackage ./pgsrip.nix { };
+      pythonEnv = pkgs.python3.withPackages (
+        ps: with ps; [
+          torch
+          torchvision
+          transformers
+          opencv4
+          fastapi
+          uvicorn
+          pydantic
+          pillow
+          numpy
+          pgsrip
+        ]
+      );
+      python = if cfg.python != null then cfg.python else pythonEnv;
       environment = {
         PADDLE_OCR_MODEL = cfg.model;
         PADDLE_OCR_PROMPT = cfg.prompt;
@@ -78,12 +100,7 @@ mkDotsModule {
       };
     in
     {
-      assertions = [
-        {
-          assertion = cfg.python != null;
-          message = "dots.system.services.media.paddle-ocr.python must point to the OCR Python environment.";
-        }
-      ];
+      nixpkgs.config.cudaSupport = cfg.cudaSupport;
 
       systemd = {
         tmpfiles.rules = [
@@ -100,7 +117,7 @@ mkDotsModule {
           serviceConfig = {
             User = cfg.user;
             WorkingDirectory = cfg.cacheDir;
-            ExecStart = "${cfg.python} ${script}";
+            ExecStart = "${python}/bin/python3 ${script}";
             Restart = "on-failure";
             RestartSec = 5;
             StandardOutput = "journal";
