@@ -63,8 +63,9 @@ mkDotsModule {
         );
         default = { };
         description = ''
-          Overrides applied to the game-generated ini. Managed keys are removed
-          before each start, so deleting a key reverts to the game default.
+          Nix-cased overrides for the server.ini template. Keys are matched to
+          the template keys case-insensitively, preserving their spelling
+          (`autoCreateUserInWhiteList`, `UPnP`).
         '';
       };
 
@@ -81,6 +82,27 @@ mkDotsModule {
           File holding the shared server join password; merged into the ini as
           `Password`. Null leaves the ini's existing `Password` untouched.
         '';
+      };
+
+      forceGenerateSeed = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Regenerate the world seed once. Toggle it off and on again to
+          regenerate another; leaving it on does not regenerate every start.
+        '';
+      };
+
+      forceGenerateResetId = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Regenerate `ResetID` once; toggle off and on to regenerate again.";
+      };
+
+      forceGenerateServerPlayerId = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Regenerate `ServerPlayerID` once; toggle off and on to regenerate again.";
       };
 
       secretEnv = lib.mkOption {
@@ -171,18 +193,73 @@ mkDotsModule {
       configDir = "${cfg.dataDir}/data/Server";
       serverName = cfg.settings.serverName or defaults.settings.serverName;
       configFile = "${configDir}/${serverName}.ini";
-      managedFile = "${configFile}.nix-managed";
+      forceFile = "${configFile}.nix-forced";
 
       configValue = v: if lib.isBool v then (if v then "true" else "false") else toString v;
 
+      templateKeys =
+        let
+          lines = lib.splitString "\n" (builtins.readFile ./server.ini);
+        in
+        lib.filter (k: k != "") (
+          map (
+            line:
+            let
+              m = builtins.match "^([A-Za-z0-9_]+)=.*" line;
+            in
+            if m == null then "" else builtins.head m
+          ) lines
+        );
+
+      normalizeKey = k: lib.toLower (lib.replaceStrings [ "_" ] [ "" ] k);
+
+      resolveKey =
+        key:
+        let
+          normalized = normalizeKey key;
+          match = lib.findFirst (templateKey: normalizeKey templateKey == normalized) null templateKeys;
+        in
+        if match == null then key else match;
+
+      configValueFor =
+        iniKey: fallback:
+        let
+          matches = lib.filter (k: resolveKey k == iniKey) (lib.attrNames cfg.serverConfig);
+        in
+        if matches == [ ] then fallback else cfg.serverConfig.${lib.head matches};
+
       publicEnabled =
         let
-          value = cfg.serverConfig.Public or false;
+          value = configValueFor "Public" false;
         in
         if lib.isBool value then value else value == "true";
 
+      badKeys = lib.filter (
+        k:
+        builtins.elem (resolveKey k) [
+          "Password"
+          "RCONPassword"
+          "DiscordToken"
+          "Seed"
+          "ResetID"
+          "ServerPlayerID"
+          "MaxPlayers"
+          "DefaultPort"
+          "UDPPort"
+          "RCONPort"
+        ]
+      ) (lib.attrNames cfg.serverConfig);
+
+      forceSeed = if cfg.forceGenerateSeed then "true" else "false";
+      forceReset = if cfg.forceGenerateResetId then "true" else "false";
+      forcePlayer = if cfg.forceGenerateServerPlayerId then "true" else "false";
+
+      readValue = key: ''
+        awk -F= -v key=${lib.escapeShellArg key} '$1 == key { sub(/^[^=]*=/, ""); print; exit }' ${lib.escapeShellArg configFile} 2>/dev/null || true
+      '';
+
       setConfig = key: value: ''
-        awk -v key=${lib.escapeShellArg key} -v value=${lib.escapeShellArg value} '
+        awk -v key=${lib.escapeShellArg (resolveKey key)} -v value=${lib.escapeShellArg value} '
           BEGIN { found = 0 }
           index($0, key "=") == 1 { print key "=" value; found = 1; next }
           { print }
@@ -238,12 +315,12 @@ mkDotsModule {
                 message = "dots.system.services.games.project-zomboid.secretEnv needs secretEnvSources to read the secrets from.";
               }
               {
-                assertion = !(cfg.serverConfig ? Password);
-                message = "dots.system.services.games.project-zomboid.serverConfig.Password is set from serverPasswordSecret; do not put it in ini.";
+                assertion = badKeys == [ ];
+                message = "dots.system.services.games.project-zomboid.serverConfig must not contain Password, RCONPassword, DiscordToken, Seed, ResetID, ServerPlayerID, MaxPlayers, DefaultPort, UDPPort or RCONPort; use serverPasswordSecret, the image env/settings, udpPorts, or the forceGenerate* flags.";
               }
               {
                 assertion = !publicEnabled || config.dots.system.networking.wireguard.mesh.routeAll;
-                message = "dots.system.services.games.project-zomboid.serverConfig.Public requires the host to egress through the public entry (wireguard.mesh.routeAll = true); otherwise the advert names the host's direct address.";
+                message = "dots.system.services.games.project-zomboid.serverConfig Public requires the host to egress through the public entry (wireguard.mesh.routeAll = true); otherwise the advert names the host's direct address.";
               }
             ];
 
@@ -270,22 +347,43 @@ mkDotsModule {
                   script = ''
                     umask 077
                     mkdir -p ${lib.escapeShellArg configDir}
-                    touch ${lib.escapeShellArg configFile}
-                    if [ -f ${lib.escapeShellArg managedFile} ]; then
-                      awk -F= 'NR == FNR { keys[$0] = 1; next } { if ($1 in keys) next; print }' \
-                        ${lib.escapeShellArg managedFile} ${lib.escapeShellArg configFile} > ${
-                          lib.escapeShellArg (configFile + ".tmp")
-                        }
-                      mv ${lib.escapeShellArg (configFile + ".tmp")} ${lib.escapeShellArg configFile}
+                    oldSeed=$(${readValue "Seed"})
+                    oldReset=$(${readValue "ResetID"})
+                    oldPlayer=$(${readValue "ServerPlayerID"})
+                    case "$oldSeed" in @*) oldSeed="" ;; esac
+                    case "$oldReset" in @*) oldReset="" ;; esac
+                    case "$oldPlayer" in @*) oldPlayer="" ;; esac
+                    seed="$oldSeed"
+                    reset="$oldReset"
+                    player="$oldPlayer"
+                    forced=""
+                    if [ "${forceSeed}" = true ]; then
+                      if [ -z "$seed" ] || ! awk -v f=seed '$0 == f { found = 1 } END { exit !found }' ${lib.escapeShellArg forceFile} 2>/dev/null; then
+                        seed=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)
+                      fi
+                      forced="$forced seed"
                     fi
+                    if [ "${forceReset}" = true ]; then
+                      if [ -z "$reset" ] || ! awk -v f=reset '$0 == f { found = 1 } END { exit !found }' ${lib.escapeShellArg forceFile} 2>/dev/null; then
+                        reset=$(od -An -N4 -tu4 /dev/urandom | awk '{ print $1 % 2147483647 }')
+                      fi
+                      forced="$forced reset"
+                    fi
+                    if [ "${forcePlayer}" = true ]; then
+                      if [ -z "$player" ] || ! awk -v f=player '$0 == f { found = 1 } END { exit !found }' ${lib.escapeShellArg forceFile} 2>/dev/null; then
+                        player=$(od -An -N4 -tu4 /dev/urandom | awk '{ print $1 % 2147483647 }')
+                      fi
+                      forced="$forced player"
+                    fi
+                    install -m 0600 ${./server.ini} ${lib.escapeShellArg configFile}
+                    awk -v seed="$seed" -v reset="$reset" -v player="$player" '
+                      { gsub(/@SEED@/, seed); gsub(/@RESET_ID@/, reset); gsub(/@SERVER_PLAYER_ID@/, player); print }
+                    ' ${lib.escapeShellArg configFile} > ${lib.escapeShellArg (configFile + ".tmp")}
+                    mv ${lib.escapeShellArg (configFile + ".tmp")} ${lib.escapeShellArg configFile}
                     ${lib.concatStrings (lib.mapAttrsToList (k: v: setConfig k (configValue v)) cfg.serverConfig)}
                     ${setPassword}
-                    printf '%s\n' ${
-                      lib.concatMapStringsSep " " (k: lib.escapeShellArg k) (
-                        lib.attrNames cfg.serverConfig ++ [ "Password" ]
-                      )
-                    } > ${lib.escapeShellArg managedFile}
-                    chmod 600 ${lib.escapeShellArg configFile} ${lib.escapeShellArg managedFile}
+                    printf '%s\n' $forced > ${lib.escapeShellArg forceFile}
+                    chmod 600 ${lib.escapeShellArg configFile} ${lib.escapeShellArg forceFile}
                   '';
                 }
                 // lib.optionalAttrs (cfg.serverPasswordFile != null) {
