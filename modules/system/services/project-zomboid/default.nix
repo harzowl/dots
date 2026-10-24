@@ -100,7 +100,7 @@ mkDotsModule {
 
             ports = lib.mkOption {
               type = lib.types.listOf lib.types.port;
-              default = config.dots.system.services.games."project-zomboid".udpPorts;
+              default = config.dots.system.services.games.project-zomboid.udpPorts;
               description = "UDP ports to forward to the server.";
             };
 
