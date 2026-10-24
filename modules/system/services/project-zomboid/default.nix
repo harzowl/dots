@@ -57,6 +57,16 @@ mkDotsModule {
         '';
       };
 
+      publicViaEdge = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Use the WireGuard server as the public entry: route egress through it,
+          set the Docker bridge MTU to 1420, disable UPnP, and advertise the
+          server's public address.
+        '';
+      };
+
       serverConfig = lib.mkOption {
         type = lib.types.attrsOf (
           lib.types.either lib.types.bool (lib.types.either lib.types.int lib.types.str)
@@ -165,6 +175,9 @@ mkDotsModule {
       inherit (args) config lib pkgs;
 
       meshInterface = config.dots.system.networking.wireguard.mesh.interface;
+
+      meshServerAddress =
+        config.dots.system.networking.wireguard.mesh.members.${config.dots.system.networking.wireguard.mesh.server}.address;
 
       containerPort =
         p:
@@ -307,6 +320,21 @@ mkDotsModule {
           (mkDockerService.config {
             inherit spec defaults;
           } args)
+
+          (lib.mkIf cfg.publicViaEdge {
+            dots.system = {
+              networking.wireguard.mesh.routeAll = true;
+              docker.mtu = 1420;
+              services.games.project-zomboid.serverConfig = {
+                UPnP = false;
+                serverBrowserAnnouncedIP = meshServerAddress;
+              };
+            };
+          })
+
+          (lib.mkIf (!cfg.publicViaEdge) {
+            dots.system.networking.wireguard.mesh.routeAll = false;
+          })
 
           {
             assertions = [
