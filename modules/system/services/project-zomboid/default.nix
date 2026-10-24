@@ -57,13 +57,13 @@ mkDotsModule {
         '';
       };
 
-      directBindAddress = lib.mkOption {
+      lanBindAddress = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
         description = ''
-          Extra host address to publish the direct-connection port on. Set it
-          to the LAN address when the residential router forwards UDP 16262 to
-          the host; 16261 stays on `bindAddress`.
+          Extra host address to publish both UDP ports on, for LAN clients.
+          Only the direct port is forwarded on the residential router; the game
+          port stays off the WAN.
         '';
       };
 
@@ -168,11 +168,15 @@ mkDotsModule {
         in
         if cfg.bindAddress == null then p else "${cfg.bindAddress}:${port}:${port}";
 
-      directPort = containerPort (lib.elemAt cfg.udpPorts 1);
-
-      extraDirectPorts = lib.optional (
-        cfg.bindAddress != null && cfg.directBindAddress != null
-      ) "${cfg.directBindAddress}:${directPort}:${directPort}";
+      extraLanPorts = lib.optionals (cfg.bindAddress != null && cfg.lanBindAddress != null) (
+        map (
+          p:
+          let
+            port = containerPort p;
+          in
+          "${cfg.lanBindAddress}:${port}:${port}"
+        ) cfg.udpPorts
+      );
 
       remap = mkSecretEnv {
         inherit lib pkgs;
@@ -225,7 +229,7 @@ mkDotsModule {
           defaultPort = containerPort (lib.elemAt cfg.udpPorts 0);
           udpPort = containerPort (lib.elemAt cfg.udpPorts 1);
         };
-        udpPorts = map publishPort cfg.udpPorts ++ extraDirectPorts;
+        udpPorts = map publishPort cfg.udpPorts ++ extraLanPorts;
         volumes = [
           "${cfg.dataDir}/server:/project-zomboid"
           "${cfg.dataDir}/data:/project-zomboid-config"
