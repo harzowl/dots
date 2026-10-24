@@ -63,8 +63,8 @@ mkDotsModule {
         );
         default = { };
         description = ''
-          Project Zomboid server settings merged into the game-generated ini
-          before each start. Keys not listed here stay as the game wrote them.
+          Overrides applied to the game-generated ini. Managed keys are removed
+          before each start, so deleting a key reverts to the game default.
         '';
       };
 
@@ -171,6 +171,7 @@ mkDotsModule {
       configDir = "${cfg.dataDir}/data/Server";
       serverName = cfg.settings.serverName or defaults.settings.serverName;
       configFile = "${configDir}/${serverName}.ini";
+      managedFile = "${configFile}.nix-managed";
 
       configValue = v: if lib.isBool v then (if v then "true" else "false") else toString v;
 
@@ -258,7 +259,7 @@ mkDotsModule {
 
               services = {
                 "${cfg.name}-config" = {
-                  description = "Merge the Project Zomboid server settings";
+                  description = "Apply the Nix-managed Project Zomboid server settings";
                   wantedBy = [ "multi-user.target" ];
                   before = [ "${cfg.backend}-${cfg.name}.service" ];
                   path = [
@@ -270,9 +271,21 @@ mkDotsModule {
                     umask 077
                     mkdir -p ${lib.escapeShellArg configDir}
                     touch ${lib.escapeShellArg configFile}
+                    if [ -f ${lib.escapeShellArg managedFile} ]; then
+                      awk -F= 'NR == FNR { keys[$0] = 1; next } { if ($1 in keys) next; print }' \
+                        ${lib.escapeShellArg managedFile} ${lib.escapeShellArg configFile} > ${
+                          lib.escapeShellArg (configFile + ".tmp")
+                        }
+                      mv ${lib.escapeShellArg (configFile + ".tmp")} ${lib.escapeShellArg configFile}
+                    fi
                     ${lib.concatStrings (lib.mapAttrsToList (k: v: setConfig k (configValue v)) cfg.serverConfig)}
                     ${setPassword}
-                    chmod 600 ${lib.escapeShellArg configFile}
+                    printf '%s\n' ${
+                      lib.concatMapStringsSep " " (k: lib.escapeShellArg k) (
+                        lib.attrNames cfg.serverConfig ++ [ "Password" ]
+                      )
+                    } > ${lib.escapeShellArg managedFile}
+                    chmod 600 ${lib.escapeShellArg configFile} ${lib.escapeShellArg managedFile}
                   '';
                 }
                 // lib.optionalAttrs (cfg.serverPasswordFile != null) {
