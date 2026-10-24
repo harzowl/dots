@@ -10,6 +10,7 @@
     ./mozhi
     ./music
     ./passwords
+    ./project-zomboid
     ./proxy
     ./searxng
   ];
