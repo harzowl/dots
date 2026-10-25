@@ -67,6 +67,25 @@ mkDotsModule {
         '';
       };
 
+      mods = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              workshopItemId = lib.mkOption {
+                type = lib.types.str;
+                description = "Steam Workshop item id.";
+              };
+              mods = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                description = "Mod loading ids provided by the workshop item, in load order.";
+              };
+            };
+          }
+        );
+        default = [ ];
+        description = "Workshop items and the mod loading ids they provide.";
+      };
+
       serverConfig = lib.mkOption {
         type = lib.types.attrsOf (
           lib.types.either lib.types.bool (lib.types.either lib.types.int lib.types.str)
@@ -210,6 +229,11 @@ mkDotsModule {
 
       configValue = v: if lib.isBool v then (if v then "true" else "false") else toString v;
 
+      modValues = {
+        Mods = lib.concatStringsSep ";" (lib.concatMap (m: m.mods) cfg.mods);
+        WorkshopItems = lib.concatStringsSep ";" (map (m: m.workshopItemId) cfg.mods);
+      };
+
       templateKeys =
         let
           lines = lib.splitString "\n" (builtins.readFile ./server.ini);
@@ -260,6 +284,8 @@ mkDotsModule {
           "DefaultPort"
           "UDPPort"
           "RCONPort"
+          "Mods"
+          "WorkshopItems"
         ]
       ) (lib.attrNames cfg.serverConfig);
 
@@ -344,7 +370,7 @@ mkDotsModule {
               }
               {
                 assertion = badKeys == [ ];
-                message = "dots.system.services.games.project-zomboid.serverConfig must not contain Password, RCONPassword, DiscordToken, Seed, ResetID, ServerPlayerID, MaxPlayers, DefaultPort, UDPPort or RCONPort; use serverPasswordSecret, the image env/settings, udpPorts, or the forceGenerate* flags.";
+                message = "dots.system.services.games.project-zomboid.serverConfig must not contain Password, RCONPassword, DiscordToken, Seed, ResetID, ServerPlayerID, MaxPlayers, DefaultPort, UDPPort, RCONPort, Mods or WorkshopItems; use serverPasswordSecret, the image env/settings, udpPorts, or the forceGenerate* flags.";
               }
               {
                 assertion = !publicEnabled || config.dots.system.networking.wireguard.mesh.routeAll;
@@ -409,6 +435,8 @@ mkDotsModule {
                     ' ${lib.escapeShellArg configFile} > ${lib.escapeShellArg (configFile + ".tmp")}
                     mv ${lib.escapeShellArg (configFile + ".tmp")} ${lib.escapeShellArg configFile}
                     ${lib.concatStrings (lib.mapAttrsToList (k: v: setConfig k (configValue v)) cfg.serverConfig)}
+                    ${setConfig "Mods" modValues.Mods}
+                    ${setConfig "WorkshopItems" modValues.WorkshopItems}
                     ${setPassword}
                     printf '%s\n' $forced > ${lib.escapeShellArg forceFile}
                     chmod 600 ${lib.escapeShellArg configFile} ${lib.escapeShellArg forceFile}
