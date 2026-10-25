@@ -61,6 +61,12 @@ mkDotsModule {
         description = "Use prebuilt CUDA wheels (torch-bin, torchvision-bin) instead of compiling them.";
       };
 
+      cudaCapabilities = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "CUDA compute capabilities to build source-built CUDA packages for.";
+      };
+
       libraryPath = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -116,7 +122,9 @@ mkDotsModule {
       };
     in
     {
-      nixpkgs.config.cudaSupport = cfg.cudaSupport;
+      nixpkgs.config = {
+        inherit (cfg) cudaSupport cudaCapabilities;
+      };
 
       systemd = {
         tmpfiles.rules = [
