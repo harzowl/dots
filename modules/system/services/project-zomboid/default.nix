@@ -68,22 +68,32 @@ mkDotsModule {
       };
 
       mods = lib.mkOption {
-        type = lib.types.listOf (
-          lib.types.submodule {
-            options = {
-              workshopItemId = lib.mkOption {
-                type = lib.types.ints.positive;
-                description = "Steam Workshop item id.";
-              };
-              mods = lib.mkOption {
-                type = lib.types.listOf lib.types.str;
-                description = "Mod loading ids provided by the workshop item, in load order.";
-              };
+        type = lib.types.submodule {
+          options = {
+            items = lib.mkOption {
+              type = lib.types.listOf (
+                lib.types.submodule {
+                  options = {
+                    workshopItemId = lib.mkOption {
+                      type = lib.types.ints.positive;
+                      description = "Steam Workshop item id.";
+                    };
+                    mods = lib.mkOption {
+                      type = lib.types.listOf lib.types.str;
+                      description = "Mod loading ids provided by the workshop item, in load order.";
+                    };
+                  };
+                }
+              );
+              default = [ ];
+              description = "Workshop items and the mod loading ids they provide.";
             };
-          }
-        );
-        default = [ ];
-        description = "Workshop items and the mod loading ids they provide.";
+
+            zombieBuddySupport.enable = lib.mkEnableOption "ZombieBuddy mod support";
+          };
+        };
+        default = { };
+        description = "Project Zomboid mods.";
       };
 
       serverConfig = lib.mkOption {
@@ -207,9 +217,16 @@ mkDotsModule {
 
       configValue = v: if lib.isBool v then (if v then "true" else "false") else toString v;
 
+      modEntries =
+        lib.optional cfg.mods.zombieBuddySupport.enable {
+          workshopItemId = 3619862853;
+          mods = [ "ZombieBuddy" ];
+        }
+        ++ cfg.mods.items;
+
       modValues = {
-        Mods = lib.concatStringsSep ";" (lib.concatMap (m: m.mods) cfg.mods);
-        WorkshopItems = lib.concatStringsSep ";" (map (m: toString m.workshopItemId) cfg.mods);
+        Mods = lib.concatStringsSep ";" (lib.concatMap (m: m.mods) modEntries);
+        WorkshopItems = lib.concatStringsSep ";" (map (m: toString m.workshopItemId) modEntries);
       };
 
       templateKeys =
