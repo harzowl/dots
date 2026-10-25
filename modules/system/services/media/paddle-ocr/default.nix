@@ -133,6 +133,10 @@ mkDotsModule {
           pydantic
           pillow
           numpy
+          einops
+          protobuf
+          sentencepiece
+          accelerate
           pgsrip
         ]
       );
