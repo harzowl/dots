@@ -90,6 +90,34 @@ mkDotsModule {
             packageOverrides = _final: prev: {
               torch = prev.torch-bin;
               torchvision = prev.torchvision-bin;
+              # PaddleOCR-VL's remote code was saved with transformers 4.55 and
+              # needs huggingface-hub < 1.0; nixpkgs ships newer, incompatible versions.
+              huggingface-hub = prev.huggingface-hub.overridePythonAttrs (old: {
+                version = "0.36.2";
+                src = pkgs.fetchurl {
+                  url = "https://files.pythonhosted.org/packages/7c/b7/8cb61d2eece5fb05a83271da168186721c450eb74e3c31f7ef3169fa475b/huggingface_hub-0.36.2.tar.gz";
+                  sha256 = "0ypz2pldab87agnlwcsv46lzvb01hpahfw5qlfpzh95j5x6k0d0r";
+                };
+                # 0.36 requires requests at runtime; the 1.x derivation only lists it
+                # for the optional CLI extra. The import check runs the hf wrapper.
+                dependencies = old.dependencies ++ [ pkgs.python3Packages.requests ];
+                pythonImportsCheck = [ ];
+                dontCheckRuntimeDeps = true;
+              });
+              transformers = prev.transformers.overridePythonAttrs (_old: {
+                version = "4.55.0";
+                src = pkgs.fetchurl {
+                  url = "https://files.pythonhosted.org/packages/27/5d/f7dc746eef83336a6b34197311fe0c1da0d1192f637c726c6a5cf0d83502/transformers-4.55.0.tar.gz";
+                  sha256 = "1q9s9wiy4gz0309qm4nckyziw1i3bv2a47hr1nriaynh0n517ahm";
+                };
+                # nixpkgs' tokenizers is 0.22; 4.55's upper bound is cosmetic for
+                # the tokenizer APIs this model uses.
+                postPatch = ''
+                  substituteInPlace src/transformers/dependency_versions_table.py \
+                    --replace-fail '"tokenizers": "tokenizers>=0.21,<0.22"' '"tokenizers": "tokenizers>=0.21,<0.23"'
+                '';
+                dontCheckRuntimeDeps = true;
+              });
             };
           }
         else
