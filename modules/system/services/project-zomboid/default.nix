@@ -72,7 +72,7 @@ mkDotsModule {
           lib.types.submodule {
             options = {
               workshopItemId = lib.mkOption {
-                type = lib.types.str;
+                type = lib.types.ints.positive;
                 description = "Steam Workshop item id.";
               };
               mods = lib.mkOption {
@@ -231,7 +231,7 @@ mkDotsModule {
 
       modValues = {
         Mods = lib.concatStringsSep ";" (lib.concatMap (m: m.mods) cfg.mods);
-        WorkshopItems = lib.concatStringsSep ";" (map (m: m.workshopItemId) cfg.mods);
+        WorkshopItems = lib.concatStringsSep ";" (map (m: toString m.workshopItemId) cfg.mods);
       };
 
       templateKeys =
