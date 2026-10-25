@@ -113,27 +113,6 @@ mkDotsModule {
         '';
       };
 
-      forceGenerateSeed = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-        description = ''
-          Regenerate the world seed once. Toggle it off and on again to
-          regenerate another; leaving it on does not regenerate every start.
-        '';
-      };
-
-      forceGenerateResetId = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-        description = "Regenerate `ResetID` once; toggle off and on to regenerate again.";
-      };
-
-      forceGenerateServerPlayerId = lib.mkOption {
-        type = lib.types.bool;
-        default = false;
-        description = "Regenerate `ServerPlayerID` once; toggle off and on to regenerate again.";
-      };
-
       secretEnv = lib.mkOption {
         type = lib.types.attrsOf lib.types.str;
         default = {
@@ -225,7 +204,6 @@ mkDotsModule {
       configDir = "${cfg.dataDir}/data/Server";
       serverName = cfg.settings.serverName or defaults.settings.serverName;
       configFile = "${configDir}/${serverName}.ini";
-      forceFile = "${configFile}.nix-forced";
 
       configValue = v: if lib.isBool v then (if v then "true" else "false") else toString v;
 
@@ -288,10 +266,6 @@ mkDotsModule {
           "WorkshopItems"
         ]
       ) (lib.attrNames cfg.serverConfig);
-
-      forceSeed = if cfg.forceGenerateSeed then "true" else "false";
-      forceReset = if cfg.forceGenerateResetId then "true" else "false";
-      forcePlayer = if cfg.forceGenerateServerPlayerId then "true" else "false";
 
       readValue = key: ''
         awk -F= -v key=${lib.escapeShellArg key} '$1 == key { sub(/^[^=]*=/, ""); print; exit }' ${lib.escapeShellArg configFile} 2>/dev/null || true
@@ -370,7 +344,7 @@ mkDotsModule {
               }
               {
                 assertion = badKeys == [ ];
-                message = "dots.system.services.games.project-zomboid.serverConfig must not contain Password, RCONPassword, DiscordToken, Seed, ResetID, ServerPlayerID, MaxPlayers, DefaultPort, UDPPort, RCONPort, Mods or WorkshopItems; use serverPasswordSecret, the image env/settings, udpPorts, or the forceGenerate* flags.";
+                message = "dots.system.services.games.project-zomboid.serverConfig must not contain Password, RCONPassword, DiscordToken, Seed, ResetID, ServerPlayerID, MaxPlayers, DefaultPort, UDPPort, RCONPort, Mods or WorkshopItems; use serverPasswordSecret, the image env/settings, udpPorts, the mods list, or a new settings.serverName for a fresh world.";
               }
               {
                 assertion = !publicEnabled || config.dots.system.networking.wireguard.mesh.routeAll;
@@ -410,25 +384,9 @@ mkDotsModule {
                     seed="$oldSeed"
                     reset="$oldReset"
                     player="$oldPlayer"
-                    forced=""
-                    if [ "${forceSeed}" = true ]; then
-                      if [ -z "$seed" ] || ! awk -v f=seed '$0 == f { found = 1 } END { exit !found }' ${lib.escapeShellArg forceFile} 2>/dev/null; then
-                        seed=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)
-                      fi
-                      forced="$forced seed"
-                    fi
-                    if [ "${forceReset}" = true ]; then
-                      if [ -z "$reset" ] || ! awk -v f=reset '$0 == f { found = 1 } END { exit !found }' ${lib.escapeShellArg forceFile} 2>/dev/null; then
-                        reset=$(od -An -N4 -tu4 /dev/urandom | awk '{ print $1 % 2147483647 }')
-                      fi
-                      forced="$forced reset"
-                    fi
-                    if [ "${forcePlayer}" = true ]; then
-                      if [ -z "$player" ] || ! awk -v f=player '$0 == f { found = 1 } END { exit !found }' ${lib.escapeShellArg forceFile} 2>/dev/null; then
-                        player=$(od -An -N4 -tu4 /dev/urandom | awk '{ print $1 % 2147483647 }')
-                      fi
-                      forced="$forced player"
-                    fi
+                    [ -n "$seed" ] || seed=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)
+                    [ -n "$reset" ] || reset=$(od -An -N4 -tu4 /dev/urandom | awk '{ print $1 % 2147483647 }')
+                    [ -n "$player" ] || player=$(od -An -N4 -tu4 /dev/urandom | awk '{ print $1 % 2147483647 }')
                     install -m 0600 ${./server.ini} ${lib.escapeShellArg configFile}
                     awk -v seed="$seed" -v reset="$reset" -v player="$player" '
                       { gsub(/@SEED@/, seed); gsub(/@RESET_ID@/, reset); gsub(/@SERVER_PLAYER_ID@/, player); print }
@@ -438,8 +396,7 @@ mkDotsModule {
                     ${setConfig "Mods" modValues.Mods}
                     ${setConfig "WorkshopItems" modValues.WorkshopItems}
                     ${setPassword}
-                    printf '%s\n' $forced > ${lib.escapeShellArg forceFile}
-                    chmod 600 ${lib.escapeShellArg configFile} ${lib.escapeShellArg forceFile}
+                    chmod 600 ${lib.escapeShellArg configFile}
                   '';
                 }
                 // lib.optionalAttrs (cfg.serverPasswordFile != null) {
