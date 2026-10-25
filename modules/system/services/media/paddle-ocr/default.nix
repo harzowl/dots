@@ -55,6 +55,12 @@ mkDotsModule {
         description = "Build the OCR Python environment with CUDA support.";
       };
 
+      prebuilt = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Use prebuilt CUDA wheels (torch-bin, torchvision-bin) instead of compiling them.";
+      };
+
       libraryPath = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -72,7 +78,17 @@ mkDotsModule {
     let
       script = pkgs.writeText "paddle-ocr-server.py" (builtins.readFile ./server.py);
       pgsrip = pkgs.callPackage ./pgsrip.nix { };
-      pythonEnv = pkgs.python3.withPackages (
+      pythonBase =
+        if cfg.prebuilt then
+          pkgs.python3.override {
+            packageOverrides = _final: prev: {
+              torch = prev.torch-bin;
+              torchvision = prev.torchvision-bin;
+            };
+          }
+        else
+          pkgs.python3;
+      pythonEnv = pythonBase.withPackages (
         ps: with ps; [
           torch
           torchvision
