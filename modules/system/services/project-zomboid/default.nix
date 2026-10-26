@@ -316,9 +316,8 @@ mkDotsModule {
         ]
         ++ lib.concatMap (
           m:
-          lib.optional (
-            m.path != null
-          ) "${toString m.path}:/project-zomboid-config/mods/${builtins.baseNameOf (toString m.path)}:ro"
+          lib.optional (m.path != null)
+            "${pkgs.copyPathToStore m.path}:/project-zomboid-config/mods/${builtins.baseNameOf (toString m.path)}:ro"
         ) cfg.mods
         ++ cfg.volumes;
         environmentFiles = cfg.environmentFiles ++ [ remap.environmentFile ];
@@ -375,7 +374,9 @@ mkDotsModule {
               cfg.serverPasswordFile != null
             ) cfg.serverPasswordSecret;
 
-            system.extraDependencies = lib.map (m: m.path) (lib.filter (m: m.path != null) cfg.mods);
+            system.extraDependencies = lib.map (m: pkgs.copyPathToStore m.path) (
+              lib.filter (m: m.path != null) cfg.mods
+            );
 
             systemd = {
               tmpfiles.rules = [
