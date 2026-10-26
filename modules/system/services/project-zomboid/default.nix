@@ -375,6 +375,8 @@ mkDotsModule {
               cfg.serverPasswordFile != null
             ) cfg.serverPasswordSecret;
 
+            system.extraDependencies = lib.map (m: m.path) (lib.filter (m: m.path != null) cfg.mods);
+
             systemd = {
               tmpfiles.rules = [
                 "d '${cfg.dataDir}/server' 0755 root root -"
