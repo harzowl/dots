@@ -20,6 +20,66 @@ let
       memoryXmsGb = 6;
     };
   };
+
+  antiCheatSettings = {
+    safety = "AntiCheatSafety";
+    speed = "AntiCheatSpeed";
+    noClip = "AntiCheatNoClip";
+    hit = "AntiCheatHit";
+    packetException = "AntiCheatPacketException";
+    permission = "AntiCheatPermission";
+    xp = "AntiCheatXP";
+    safeHouse = "AntiCheatSafeHouse";
+    player = "AntiCheatPlayer";
+    checksum = "AntiCheatChecksum";
+  };
+
+  antiCheatLevels = {
+    ban = 1;
+    kick = 2;
+    log = 3;
+    disabled = 4;
+  };
+
+  antiCheatOption =
+    { lib }:
+    lib.mkOption {
+      type = lib.types.nullOr (lib.types.enum (lib.attrNames antiCheatLevels));
+      default = null;
+      description = "Anti-cheat response; null keeps the server.ini default.";
+    };
+
+  lootKeys = {
+    food = "FoodLootNew";
+    literature = "LiteratureLootNew";
+    skillBook = "SkillBookLoot";
+    recipeResource = "RecipeResourceLoot";
+    medical = "MedicalLootNew";
+    survivalGears = "SurvivalGearsLootNew";
+    cannedFood = "CannedFoodLootNew";
+    weapon = "WeaponLootNew";
+    rangedWeapon = "RangedWeaponLootNew";
+    ammo = "AmmoLootNew";
+    mechanics = "MechanicsLootNew";
+    other = "OtherLootNew";
+    clothing = "ClothingLootNew";
+    container = "ContainerLootNew";
+    key = "KeyLootNew";
+    media = "MediaLootNew";
+    memento = "MementoLootNew";
+    cookware = "CookwareLootNew";
+    material = "MaterialLootNew";
+    farming = "FarmingLootNew";
+    tool = "ToolLootNew";
+  };
+
+  lootOption =
+    { lib }:
+    lib.mkOption {
+      type = lib.types.nullOr (lib.types.either lib.types.int lib.types.float);
+      default = null;
+      description = "Loot multiplier; null keeps the game's default.";
+    };
 in
 mkDotsModule {
   optionPath = [
@@ -34,6 +94,17 @@ mkDotsModule {
 
   options =
     { config, lib, ... }:
+    let
+      luaValue = lib.types.oneOf [
+        lib.types.bool
+        lib.types.int
+        lib.types.float
+        lib.types.str
+        (lib.types.attrsOf luaValue)
+        (lib.types.listOf luaValue)
+      ];
+      luaTable = lib.types.attrsOf luaValue;
+    in
     (mkDockerService.options {
       inherit lib defaults;
     })
@@ -67,41 +138,117 @@ mkDotsModule {
         '';
       };
 
-      mods = lib.mkOption {
-        type = lib.types.listOf (
+      servers = lib.mkOption {
+        type = lib.types.attrsOf (
           lib.types.submodule {
             options = {
-              workshopId = lib.mkOption {
-                type = lib.types.nullOr lib.types.ints.positive;
-                default = null;
-                description = "Steam Workshop item id; mutually exclusive with path.";
+              enable = lib.mkEnableOption "this server";
+
+              settings = lib.mkOption {
+                type = lib.types.submodule {
+                  freeformType = lib.types.attrsOf (
+                    lib.types.either lib.types.bool (lib.types.either lib.types.int lib.types.str)
+                  );
+                  options.antiCheat = lib.mkOption {
+                    type = lib.types.nullOr (
+                      lib.types.either (lib.types.enum (lib.attrNames antiCheatLevels)) (
+                        lib.types.submodule {
+                          options = lib.mapAttrs (_: _: antiCheatOption { inherit lib; }) antiCheatSettings // {
+                            default = lib.mkOption {
+                              type = lib.types.nullOr (lib.types.enum (lib.attrNames antiCheatLevels));
+                              default = null;
+                              description = "Response for checks without their own value.";
+                            };
+                          };
+                        }
+                      )
+                    );
+                    default = null;
+                    description = ''
+                      One level for every check, or a table with a `default` and
+                      per-check overrides. Null keeps the server.ini defaults.
+                    '';
+                  };
+                };
+                default = { };
+                description = ''
+                  Nix-cased overrides for the server.ini template. Keys are matched
+                  to the template keys case-insensitively, preserving their spelling
+                  (`autoCreateUserInWhiteList`, `UPnP`).
+                '';
               };
-              path = lib.mkOption {
-                type = lib.types.nullOr lib.types.path;
-                default = null;
-                description = "Local mod directory; mutually exclusive with workshopId.";
-              };
-              items = lib.mkOption {
-                type = lib.types.listOf lib.types.str;
+
+              mods = lib.mkOption {
+                type = lib.types.listOf (
+                  lib.types.submodule {
+                    options = {
+                      workshopId = lib.mkOption {
+                        type = lib.types.nullOr lib.types.ints.positive;
+                        default = null;
+                        description = "Steam Workshop item id; mutually exclusive with path.";
+                      };
+                      path = lib.mkOption {
+                        type = lib.types.nullOr lib.types.path;
+                        default = null;
+                        description = "Local mod directory; mutually exclusive with workshopId.";
+                      };
+                      items = lib.mkOption {
+                        type = lib.types.listOf lib.types.str;
+                        default = [ ];
+                        description = "Mod loading ids provided by this entry, in load order.";
+                      };
+                    };
+                  }
+                );
                 default = [ ];
-                description = "Mod loading ids provided by this entry, in load order.";
+                description = "Project Zomboid mods; Workshop entries use workshopId, local entries use path.";
+              };
+
+              sandboxVars = lib.mkOption {
+                type = lib.types.nullOr (
+                  lib.types.submodule {
+                    freeformType = luaTable;
+                    options.loot = lib.mkOption {
+                      type = lib.types.submodule {
+                        options = lib.mapAttrs (_: _: lootOption { inherit lib; }) lootKeys;
+                      };
+                      default = { };
+                      description = "Loot multipliers by category; `skillBook` becomes `SkillBookLoot`.";
+                    };
+                  }
+                );
+                default = null;
+                description = ''
+                  SandboxVars overrides merged into `<server>_SandboxVars.lua`;
+                  null leaves the file untouched. Keys are camelCase
+                  (`zombieLore.sprinterPercentage`); `loot.<category>` maps to the
+                  game's loot multiplier keys. The merge runs once the game has
+                  created the file, so mod-provided options keep their values.
+                '';
+              };
+
+              spawnpoints = lib.mkOption {
+                type = lib.types.nullOr (lib.types.attrsOf (lib.types.listOf luaTable));
+                default = null;
+                description = ''
+                  SpawnPoints table written to `<server>_spawnpoints.lua`; null does not touch the file.
+                '';
+              };
+
+              spawnregions = lib.mkOption {
+                type = lib.types.nullOr (lib.types.listOf luaTable);
+                default = null;
+                description = ''
+                  SpawnRegions list written to `<server>_spawnregions.lua`; null does not touch the file.
+                '';
               };
             };
           }
         );
-        default = [ ];
-        description = "Project Zomboid mods; Workshop entries use workshopId, local entries use path.";
-      };
-
-      serverConfig = lib.mkOption {
-        type = lib.types.attrsOf (
-          lib.types.either lib.types.bool (lib.types.either lib.types.int lib.types.str)
-        );
         default = { };
         description = ''
-          Nix-cased overrides for the server.ini template. Keys are matched to
-          the template keys case-insensitively, preserving their spelling
-          (`autoCreateUserInWhiteList`, `UPnP`).
+          Server definitions keyed by server name, which is also the save and
+          config file name. Enable exactly one to run it.
         '';
       };
 
@@ -209,15 +356,96 @@ mkDotsModule {
       };
 
       configDir = "${cfg.dataDir}/data/Server";
-      serverName = cfg.settings.serverName or defaults.settings.serverName;
+
+      enabledServers = lib.attrNames (lib.filterAttrs (_: s: s.enable) cfg.servers);
+      serverName = lib.head (enabledServers ++ [ defaults.settings.serverName ]);
+      server =
+        cfg.servers.${serverName} or {
+          settings = { };
+          mods = [ ];
+          sandboxVars = null;
+          spawnpoints = null;
+          spawnregions = null;
+        };
       configFile = "${configDir}/${serverName}.ini";
 
       configValue = v: if lib.isBool v then (if v then "true" else "false") else toString v;
 
+      luaKey =
+        k: if builtins.match "[A-Za-z_][A-Za-z0-9_]*" k != null then k else "[${builtins.toJSON k}]";
+
+      capitalize =
+        name:
+        lib.toUpper (builtins.substring 0 1 name)
+        + builtins.substring 1 (builtins.stringLength name - 1) name;
+
+      pascalize =
+        value:
+        if lib.isAttrs value then
+          lib.mapAttrs' (name: child: lib.nameValuePair (capitalize name) (pascalize child)) value
+        else if lib.isList value then
+          map pascalize value
+        else
+          value;
+
+      renderLua =
+        value:
+        let
+          table =
+            entries: "{${lib.optionalString (entries != [ ]) " ${lib.concatStringsSep ", " entries} "}}";
+        in
+        if lib.isBool value then
+          (if value then "true" else "false")
+        else if lib.isInt value || lib.isFloat value then
+          toString value
+        else if lib.isString value then
+          builtins.toJSON value
+        else if lib.isList value then
+          table (map renderLua value)
+        else if lib.isAttrs value then
+          table (lib.mapAttrsToList (k: v: "${luaKey k} = ${renderLua v}") value)
+        else
+          throw "unsupported Project Zomboid Lua value: ${builtins.typeOf value}";
+
+      luaFiles =
+        lib.optionalAttrs (server.spawnpoints != null) {
+          "${serverName}_spawnpoints.lua" = pkgs.writeText "zomboid-spawnpoints.lua" ''
+            function SpawnPoints()
+              return ${renderLua server.spawnpoints};
+            end
+          '';
+        }
+        // lib.optionalAttrs (server.spawnregions != null) {
+          "${serverName}_spawnregions.lua" = pkgs.writeText "zomboid-spawnregions.lua" ''
+            function SpawnRegions()
+              return ${renderLua server.spawnregions};
+            end
+          '';
+        };
+
+      sandboxOverridesTable =
+        if server.sandboxVars == null then
+          null
+        else
+          let
+            loot = lib.mapAttrs' (name: value: lib.nameValuePair lootKeys.${name} value) (
+              lib.filterAttrs (_: value: value != null) server.sandboxVars.loot
+            );
+          in
+          pascalize (lib.removeAttrs server.sandboxVars [ "loot" ]) // loot;
+
+      sandboxOverrides =
+        if sandboxOverridesTable == null || sandboxOverridesTable == { } then
+          null
+        else
+          pkgs.writeText "zomboid-sandbox-vars.lua" ''
+            return ${renderLua sandboxOverridesTable};
+          '';
+
       modValues = {
-        Mods = lib.concatStringsSep ";" (lib.concatMap (m: m.items) cfg.mods);
+        Mods = lib.concatStringsSep ";" (lib.concatMap (m: m.items) server.mods);
         WorkshopItems = lib.concatStringsSep ";" (
-          map (m: toString m.workshopId) (lib.filter (m: m.workshopId != null) cfg.mods)
+          map (m: toString m.workshopId) (lib.filter (m: m.workshopId != null) server.mods)
         );
       };
 
@@ -245,12 +473,50 @@ mkDotsModule {
         in
         if match == null then key else match;
 
+      antiCheatConfig = server.settings.antiCheat or null;
+      antiCheatDefault = if lib.isAttrs antiCheatConfig then antiCheatConfig.default or null else null;
+
+      antiCheatLevel =
+        name:
+        let
+          level = antiCheatConfig.${name} or null;
+        in
+        if antiCheatConfig == null then
+          null
+        else if lib.isString antiCheatConfig then
+          antiCheatConfig
+        else if level != null then
+          level
+        else
+          antiCheatDefault;
+
+      antiCheatValues = lib.listToAttrs (
+        lib.concatMap (
+          name:
+          let
+            level = antiCheatLevel name;
+          in
+          lib.optional (level != null) {
+            name = antiCheatSettings.${name};
+            value = antiCheatLevels.${level};
+          }
+        ) (lib.attrNames antiCheatSettings)
+      );
+
+      effectiveSettings =
+        lib.removeAttrs server.settings [ "antiCheat" ]
+        // antiCheatValues
+        // lib.optionalAttrs cfg.publicViaEdge {
+          UPnP = false;
+          serverBrowserAnnouncedIP = meshServerAddress;
+        };
+
       configValueFor =
         iniKey: fallback:
         let
-          matches = lib.filter (k: resolveKey k == iniKey) (lib.attrNames cfg.serverConfig);
+          matches = lib.filter (k: resolveKey k == iniKey) (lib.attrNames effectiveSettings);
         in
-        if matches == [ ] then fallback else cfg.serverConfig.${lib.head matches};
+        if matches == [ ] then fallback else effectiveSettings.${lib.head matches};
 
       publicEnabled =
         let
@@ -258,23 +524,23 @@ mkDotsModule {
         in
         if lib.isBool value then value else value == "true";
 
-      badKeys = lib.filter (
-        k:
-        builtins.elem (resolveKey k) [
-          "Password"
-          "RCONPassword"
-          "DiscordToken"
-          "Seed"
-          "ResetID"
-          "ServerPlayerID"
-          "MaxPlayers"
-          "DefaultPort"
-          "UDPPort"
-          "RCONPort"
-          "Mods"
-          "WorkshopItems"
-        ]
-      ) (lib.attrNames cfg.serverConfig);
+      forbiddenKeys = [
+        "Password"
+        "RCONPassword"
+        "DiscordToken"
+        "Seed"
+        "ResetID"
+        "ServerPlayerID"
+        "MaxPlayers"
+        "DefaultPort"
+        "UDPPort"
+        "RCONPort"
+        "Mods"
+        "WorkshopItems"
+      ];
+
+      badKeys =
+        settings: lib.filter (k: builtins.elem (resolveKey k) forbiddenKeys) (lib.attrNames settings);
 
       readValue = key: ''
         awk -F= -v key=${lib.escapeShellArg key} '$1 == key { sub(/^[^=]*=/, ""); print; exit }' ${lib.escapeShellArg configFile} 2>/dev/null || true
@@ -306,6 +572,7 @@ mkDotsModule {
 
       spec = cfg // {
         settings = cfg.settings // {
+          inherit serverName;
           defaultPort = containerPort (lib.elemAt cfg.udpPorts 0);
           udpPort = containerPort (lib.elemAt cfg.udpPorts 1);
         };
@@ -318,7 +585,7 @@ mkDotsModule {
           m:
           lib.optional (m.path != null)
             "${pkgs.copyPathToStore m.path}:/project-zomboid-config/mods/${builtins.baseNameOf (toString m.path)}:ro"
-        ) cfg.mods
+        ) server.mods
         ++ cfg.volumes;
         environmentFiles = cfg.environmentFiles ++ [ remap.environmentFile ];
       };
@@ -339,10 +606,6 @@ mkDotsModule {
             dots.system = {
               networking.wireguard.mesh.routeAll = true;
               docker.mtu = 1420;
-              services.games.project-zomboid.serverConfig = {
-                UPnP = false;
-                serverBrowserAnnouncedIP = meshServerAddress;
-              };
             };
           })
 
@@ -357,16 +620,22 @@ mkDotsModule {
                 message = "dots.system.services.games.project-zomboid.secretEnv needs secretEnvSources to read the secrets from.";
               }
               {
-                assertion = badKeys == [ ];
-                message = "dots.system.services.games.project-zomboid.serverConfig must not contain Password, RCONPassword, DiscordToken, Seed, ResetID, ServerPlayerID, MaxPlayers, DefaultPort, UDPPort, RCONPort, Mods or WorkshopItems; use serverPasswordSecret, the image env/settings, udpPorts, the mods list, or a new settings.serverName for a fresh world.";
+                assertion = lib.length enabledServers == 1;
+                message = "dots.system.services.games.project-zomboid needs exactly one enabled servers.<name>; enabled: ${lib.concatStringsSep ", " enabledServers}.";
               }
               {
-                assertion = lib.all (m: (m.workshopId == null) != (m.path == null)) cfg.mods;
-                message = "dots.system.services.games.project-zomboid.mods entries need exactly one of workshopId or path.";
+                assertion = lib.all (s: badKeys s.settings == [ ]) (lib.attrValues cfg.servers);
+                message = "dots.system.services.games.project-zomboid servers.<name>.settings must not contain Password, RCONPassword, DiscordToken, Seed, ResetID, ServerPlayerID, MaxPlayers, DefaultPort, UDPPort, RCONPort, Mods or WorkshopItems; use serverPasswordSecret, the image env/settings, udpPorts, the mods list, or a new servers.<name> for a fresh world.";
+              }
+              {
+                assertion = lib.all (s: lib.all (m: (m.workshopId == null) != (m.path == null)) s.mods) (
+                  lib.attrValues cfg.servers
+                );
+                message = "dots.system.services.games.project-zomboid servers.<name>.mods entries need exactly one of workshopId or path.";
               }
               {
                 assertion = !publicEnabled || config.dots.system.networking.wireguard.mesh.routeAll;
-                message = "dots.system.services.games.project-zomboid.serverConfig Public requires the host to egress through the public entry (wireguard.mesh.routeAll = true); otherwise the advert names the host's direct address.";
+                message = "dots.system.services.games.project-zomboid servers.<name>.settings Public requires the host to egress through the public entry (wireguard.mesh.routeAll = true); otherwise the advert names the host's direct address.";
               }
             ];
 
@@ -375,7 +644,7 @@ mkDotsModule {
             ) cfg.serverPasswordSecret;
 
             system.extraDependencies = lib.map (m: pkgs.copyPathToStore m.path) (
-              lib.filter (m: m.path != null) cfg.mods
+              lib.filter (m: m.path != null) server.mods
             );
 
             systemd = {
@@ -392,6 +661,7 @@ mkDotsModule {
                   path = [
                     pkgs.coreutils
                     pkgs.gawk
+                    pkgs.lua5_4
                   ];
                   serviceConfig.Type = "oneshot";
                   script = ''
@@ -414,10 +684,18 @@ mkDotsModule {
                       { gsub(/@SEED@/, seed); gsub(/@RESET_ID@/, reset); gsub(/@SERVER_PLAYER_ID@/, player); print }
                     ' ${lib.escapeShellArg configFile} > ${lib.escapeShellArg (configFile + ".tmp")}
                     mv ${lib.escapeShellArg (configFile + ".tmp")} ${lib.escapeShellArg configFile}
-                    ${lib.concatStrings (lib.mapAttrsToList (k: v: setConfig k (configValue v)) cfg.serverConfig)}
+                    ${lib.concatStrings (lib.mapAttrsToList (k: v: setConfig k (configValue v)) effectiveSettings)}
                     ${setConfig "Mods" modValues.Mods}
                     ${setConfig "WorkshopItems" modValues.WorkshopItems}
                     ${setPassword}
+                    ${lib.concatStrings (
+                      lib.mapAttrsToList (name: file: ''
+                        install -m 0644 ${file} ${lib.escapeShellArg "${configDir}/${name}"}
+                      '') luaFiles
+                    )}
+                    ${lib.optionalString (sandboxOverrides != null) ''
+                      lua ${./sandbox-vars.lua} ${sandboxOverrides} ${lib.escapeShellArg "${configDir}/${serverName}_SandboxVars.lua"}
+                    ''}
                     chmod 600 ${lib.escapeShellArg configFile}
                   '';
                 }
