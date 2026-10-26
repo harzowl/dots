@@ -154,7 +154,9 @@ mkDotsModule {
       };
     in
     {
-      nixpkgs.config = {
+      # A global cudaSupport rebuilds every CUDA-capable package (opencv
+      # included); the prebuilt wheels already carry CUDA.
+      nixpkgs.config = lib.optionalAttrs (!cfg.prebuilt) {
         inherit (cfg) cudaSupport cudaCapabilities;
       };
 
