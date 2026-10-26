@@ -48,45 +48,6 @@ let
       default = null;
       description = "Anti-cheat response; null keeps the server.ini default.";
     };
-
-  lootKeys = {
-    food = "FoodLootNew";
-    literature = "LiteratureLootNew";
-    skillBook = "SkillBookLoot";
-    recipeResource = "RecipeResourceLoot";
-    medical = "MedicalLootNew";
-    survivalGears = "SurvivalGearsLootNew";
-    cannedFood = "CannedFoodLootNew";
-    weapon = "WeaponLootNew";
-    rangedWeapon = "RangedWeaponLootNew";
-    ammo = "AmmoLootNew";
-    mechanics = "MechanicsLootNew";
-    other = "OtherLootNew";
-    clothing = "ClothingLootNew";
-    container = "ContainerLootNew";
-    key = "KeyLootNew";
-    media = "MediaLootNew";
-    memento = "MementoLootNew";
-    cookware = "CookwareLootNew";
-    material = "MaterialLootNew";
-    farming = "FarmingLootNew";
-    tool = "ToolLootNew";
-  };
-
-  lootRespawnKeys = {
-    hours = "HoursForLootRespawn";
-    maxItems = "MaxItemsForLootRespawn";
-    seenHoursPrevent = "SeenHoursPreventLootRespawn";
-    constructionPrevents = "ConstructionPreventsLootRespawn";
-  };
-
-  lootOption =
-    { lib }:
-    lib.mkOption {
-      type = lib.types.nullOr (lib.types.either lib.types.int lib.types.float);
-      default = null;
-      description = "Loot setting; null keeps the game's default.";
-    };
 in
 mkDotsModule {
   optionPath = [
@@ -212,42 +173,13 @@ mkDotsModule {
               };
 
               sandboxVars = lib.mkOption {
-                type = lib.types.nullOr (
-                  lib.types.submodule {
-                    freeformType = luaTable;
-                    options.loot = lib.mkOption {
-                      type = lib.types.submodule {
-                        options = lib.mapAttrs (_: _: lootOption { inherit lib; }) lootKeys // {
-                          respawn = lib.mkOption {
-                            type = lib.types.submodule {
-                              options =
-                                lib.mapAttrs (_: _: lootOption { inherit lib; }) (
-                                  lib.removeAttrs lootRespawnKeys [ "constructionPrevents" ]
-                                )
-                                // {
-                                  constructionPrevents = lib.mkOption {
-                                    type = lib.types.nullOr lib.types.bool;
-                                    default = null;
-                                    description = "Loot respawn setting; null keeps the game's default.";
-                                  };
-                                };
-                            };
-                            default = { };
-                            description = "Loot respawn settings.";
-                          };
-                        };
-                      };
-                      default = { };
-                      description = "Loot multipliers and respawn settings by category.";
-                    };
-                  }
-                );
+                type = lib.types.nullOr luaTable;
                 default = null;
                 description = ''
                   SandboxVars overrides merged into `<server>_SandboxVars.lua`;
-                  null leaves the file untouched. Keys are camelCase
-                  (`zombieLore.sprinterPercentage`); `loot.<category>` maps to the
-                  game's loot multiplier keys. The merge runs once the game has
+                  null leaves the file untouched. Keys are the game's own names
+                  in camelCase (`zombieLore.sprinterPercentage`,
+                  `hoursForLootRespawn`). The merge runs once the game has
                   created the file, so mod-provided options keep their values.
                 '';
               };
@@ -448,19 +380,7 @@ mkDotsModule {
           '';
         };
 
-      sandboxOverridesTable =
-        if server.sandboxVars == null then
-          null
-        else
-          let
-            loot = lib.mapAttrs' (name: value: lib.nameValuePair lootKeys.${name} value) (
-              lib.filterAttrs (_: value: value != null) (lib.removeAttrs server.sandboxVars.loot [ "respawn" ])
-            );
-            respawn = lib.mapAttrs' (name: value: lib.nameValuePair lootRespawnKeys.${name} value) (
-              lib.filterAttrs (_: value: value != null) server.sandboxVars.loot.respawn
-            );
-          in
-          pascalize (lib.removeAttrs server.sandboxVars [ "loot" ]) // loot // respawn;
+      sandboxOverridesTable = if server.sandboxVars == null then null else pascalize server.sandboxVars;
 
       sandboxOverrides =
         if sandboxOverridesTable == null || sandboxOverridesTable == { } then
