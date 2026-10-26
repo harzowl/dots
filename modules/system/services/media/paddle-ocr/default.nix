@@ -84,6 +84,7 @@ mkDotsModule {
     let
       script = pkgs.writeText "paddle-ocr-server.py" (builtins.readFile ./server.py);
       pgsrip = pkgs.callPackage ./pgsrip.nix { };
+      cudaWheels = pkgs.callPackage ./cuda-wheels.nix { };
       pythonBase =
         if cfg.prebuilt then
           pkgs.python3.override {
@@ -93,9 +94,63 @@ mkDotsModule {
               # build.
               torch-bin = prev.torch-bin.overridePythonAttrs (old: {
                 dependencies = builtins.filter (dep: (dep.pname or "") != "cuda-bindings") old.dependencies;
+                # nixpkgs builds NCCL/NVSHMEM (and gdrcopy, which only
+                # libnvshmem needs) from source; the wheels carry the same libs.
+                buildInputs = map (
+                  dep:
+                  if (dep.pname or "") == "nccl" then
+                    cudaWheels.nccl
+                  else if (dep.pname or "") == "libnvshmem" then
+                    cudaWheels.nvshmem
+                  else
+                    dep
+                ) old.buildInputs;
+                dontCheckRuntimeDeps = true;
               });
               torch = final.torch-bin;
               torchvision = final.torchvision-bin;
+              # transformers 4.55 pulls both; the wheels avoid cargo/rustc.
+              tokenizers = prev.buildPythonPackage {
+                pname = "tokenizers";
+                version = "0.22.2";
+                format = "wheel";
+
+                src = pkgs.fetchurl {
+                  url = "https://files.pythonhosted.org/packages/2e/76/932be4b50ef6ccedf9d3c6639b056a967a86258c6d9200643f01269211ca/tokenizers-0.22.2-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl";
+                  hash = "sha256-NpzJ/IzBDLJBQ4c6DZVDi7juJXu4DHGYnj7ikOjXLGc=";
+                };
+
+                nativeBuildInputs = [ pkgs.autoPatchelfHook ];
+                buildInputs = [
+                  pkgs.openssl
+                  pkgs.stdenv.cc.cc.lib
+                ];
+
+                dependencies = [ final.huggingface-hub ];
+
+                doCheck = false;
+                dontCheckRuntimeDeps = true;
+                pythonImportsCheck = [ "tokenizers" ];
+              };
+              safetensors = prev.buildPythonPackage {
+                pname = "safetensors";
+                version = "0.7.0";
+                format = "wheel";
+
+                src = pkgs.fetchurl {
+                  url = "https://files.pythonhosted.org/packages/a0/60/429e9b1cb3fc651937727befe258ea24122d9663e4d5709a48c9cbfceecb/safetensors-0.7.0-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl";
+                  hash = "sha256-2sclKTjwaW3epG9ehV3TE4RE6CI2475HX1SSnwxRDUg=";
+                };
+
+                nativeBuildInputs = [ pkgs.autoPatchelfHook ];
+                buildInputs = [ pkgs.stdenv.cc.cc.lib ];
+
+                dependencies = [ final.numpy ];
+
+                doCheck = false;
+                dontCheckRuntimeDeps = true;
+                pythonImportsCheck = [ "safetensors" ];
+              };
               # PaddleOCR-VL's remote code was saved with transformers 4.55 and
               # needs huggingface-hub < 1.0; nixpkgs ships newer, incompatible versions.
               huggingface-hub = prev.huggingface-hub.overridePythonAttrs (old: {
