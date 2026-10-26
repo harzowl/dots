@@ -87,9 +87,15 @@ mkDotsModule {
       pythonBase =
         if cfg.prebuilt then
           pkgs.python3.override {
-            packageOverrides = _final: prev: {
-              torch = prev.torch-bin;
-              torchvision = prev.torchvision-bin;
+            packageOverrides = final: prev: {
+              # torch 2.11 pulls cuda-bindings for the CuTe DSL backend; the OCR
+              # server never imports it, and no binary cache carries the unfree
+              # build.
+              torch-bin = prev.torch-bin.overridePythonAttrs (old: {
+                dependencies = builtins.filter (dep: (dep.pname or "") != "cuda-bindings") old.dependencies;
+              });
+              torch = final.torch-bin;
+              torchvision = final.torchvision-bin;
               # PaddleOCR-VL's remote code was saved with transformers 4.55 and
               # needs huggingface-hub < 1.0; nixpkgs ships newer, incompatible versions.
               huggingface-hub = prev.huggingface-hub.overridePythonAttrs (old: {
