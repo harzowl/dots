@@ -68,32 +68,29 @@ mkDotsModule {
       };
 
       mods = lib.mkOption {
-        type = lib.types.submodule {
-          options = {
-            items = lib.mkOption {
-              type = lib.types.listOf (
-                lib.types.submodule {
-                  options = {
-                    workshopItemId = lib.mkOption {
-                      type = lib.types.ints.positive;
-                      description = "Steam Workshop item id.";
-                    };
-                    mods = lib.mkOption {
-                      type = lib.types.listOf lib.types.str;
-                      description = "Mod loading ids provided by the workshop item, in load order.";
-                    };
-                  };
-                }
-              );
-              default = [ ];
-              description = "Workshop items and the mod loading ids they provide.";
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              workshopId = lib.mkOption {
+                type = lib.types.nullOr lib.types.ints.positive;
+                default = null;
+                description = "Steam Workshop item id; mutually exclusive with path.";
+              };
+              path = lib.mkOption {
+                type = lib.types.nullOr lib.types.path;
+                default = null;
+                description = "Local mod directory; mutually exclusive with workshopId.";
+              };
+              items = lib.mkOption {
+                type = lib.types.listOf lib.types.str;
+                default = [ ];
+                description = "Mod loading ids provided by this entry, in load order.";
+              };
             };
-
-            zombieBuddySupport.enable = lib.mkEnableOption "ZombieBuddy mod support";
-          };
-        };
-        default = { };
-        description = "Project Zomboid mods.";
+          }
+        );
+        default = [ ];
+        description = "Project Zomboid mods; Workshop entries use workshopId, local entries use path.";
       };
 
       serverConfig = lib.mkOption {
@@ -217,16 +214,11 @@ mkDotsModule {
 
       configValue = v: if lib.isBool v then (if v then "true" else "false") else toString v;
 
-      modEntries =
-        lib.optional cfg.mods.zombieBuddySupport.enable {
-          workshopItemId = 3619862853;
-          mods = [ "ZombieBuddy" ];
-        }
-        ++ cfg.mods.items;
-
       modValues = {
-        Mods = lib.concatStringsSep ";" (lib.concatMap (m: m.mods) modEntries);
-        WorkshopItems = lib.concatStringsSep ";" (map (m: toString m.workshopItemId) modEntries);
+        Mods = lib.concatStringsSep ";" (lib.concatMap (m: m.items) cfg.mods);
+        WorkshopItems = lib.concatStringsSep ";" (
+          map (m: toString m.workshopId) (lib.filter (m: m.workshopId != null) cfg.mods)
+        );
       };
 
       templateKeys =
@@ -322,6 +314,12 @@ mkDotsModule {
           "${cfg.dataDir}/server:/project-zomboid"
           "${cfg.dataDir}/data:/project-zomboid-config"
         ]
+        ++ lib.concatMap (
+          m:
+          lib.optional (
+            m.path != null
+          ) "${toString m.path}:/project-zomboid-config/mods/${builtins.baseNameOf (toString m.path)}:ro"
+        ) cfg.mods
         ++ cfg.volumes;
         environmentFiles = cfg.environmentFiles ++ [ remap.environmentFile ];
       };
@@ -362,6 +360,10 @@ mkDotsModule {
               {
                 assertion = badKeys == [ ];
                 message = "dots.system.services.games.project-zomboid.serverConfig must not contain Password, RCONPassword, DiscordToken, Seed, ResetID, ServerPlayerID, MaxPlayers, DefaultPort, UDPPort, RCONPort, Mods or WorkshopItems; use serverPasswordSecret, the image env/settings, udpPorts, the mods list, or a new settings.serverName for a fresh world.";
+              }
+              {
+                assertion = lib.all (m: (m.workshopId == null) != (m.path == null)) cfg.mods;
+                message = "dots.system.services.games.project-zomboid.mods entries need exactly one of workshopId or path.";
               }
               {
                 assertion = !publicEnabled || config.dots.system.networking.wireguard.mesh.routeAll;
