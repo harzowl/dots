@@ -73,12 +73,19 @@ let
     tool = "ToolLootNew";
   };
 
+  lootRespawnKeys = {
+    hours = "HoursForLootRespawn";
+    maxItems = "MaxItemsForLootRespawn";
+    seenHoursPrevent = "SeenHoursPreventLootRespawn";
+    constructionPrevents = "ConstructionPreventsLootRespawn";
+  };
+
   lootOption =
     { lib }:
     lib.mkOption {
       type = lib.types.nullOr (lib.types.either lib.types.int lib.types.float);
       default = null;
-      description = "Loot multiplier; null keeps the game's default.";
+      description = "Loot setting; null keeps the game's default.";
     };
 in
 mkDotsModule {
@@ -210,10 +217,28 @@ mkDotsModule {
                     freeformType = luaTable;
                     options.loot = lib.mkOption {
                       type = lib.types.submodule {
-                        options = lib.mapAttrs (_: _: lootOption { inherit lib; }) lootKeys;
+                        options = lib.mapAttrs (_: _: lootOption { inherit lib; }) lootKeys // {
+                          respawn = lib.mkOption {
+                            type = lib.types.submodule {
+                              options =
+                                lib.mapAttrs (_: _: lootOption { inherit lib; }) (
+                                  lib.removeAttrs lootRespawnKeys [ "constructionPrevents" ]
+                                )
+                                // {
+                                  constructionPrevents = lib.mkOption {
+                                    type = lib.types.nullOr lib.types.bool;
+                                    default = null;
+                                    description = "Loot respawn setting; null keeps the game's default.";
+                                  };
+                                };
+                            };
+                            default = { };
+                            description = "Loot respawn settings.";
+                          };
+                        };
                       };
                       default = { };
-                      description = "Loot multipliers by category; `skillBook` becomes `SkillBookLoot`.";
+                      description = "Loot multipliers and respawn settings by category.";
                     };
                   }
                 );
@@ -429,10 +454,13 @@ mkDotsModule {
         else
           let
             loot = lib.mapAttrs' (name: value: lib.nameValuePair lootKeys.${name} value) (
-              lib.filterAttrs (_: value: value != null) server.sandboxVars.loot
+              lib.filterAttrs (_: value: value != null) (lib.removeAttrs server.sandboxVars.loot [ "respawn" ])
+            );
+            respawn = lib.mapAttrs' (name: value: lib.nameValuePair lootRespawnKeys.${name} value) (
+              lib.filterAttrs (_: value: value != null) server.sandboxVars.loot.respawn
             );
           in
-          pascalize (lib.removeAttrs server.sandboxVars [ "loot" ]) // loot;
+          pascalize (lib.removeAttrs server.sandboxVars [ "loot" ]) // loot // respawn;
 
       sandboxOverrides =
         if sandboxOverridesTable == null || sandboxOverridesTable == { } then
