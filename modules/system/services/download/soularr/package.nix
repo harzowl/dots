@@ -55,7 +55,10 @@ stdenv.mkDerivation rec {
     hash = "sha256-a/HufH1y5QOX0jJolz8oVXZvOlCzg41ab+S35ZsWhWk=";
   };
 
-  patches = [ ./0001-resolve-nested-slskd-layout.patch ];
+  patches = [
+    ./0001-resolve-nested-slskd-layout.patch
+    ./0003-per-source-page.patch
+  ];
 
   installPhase = ''
     runHook preInstall
