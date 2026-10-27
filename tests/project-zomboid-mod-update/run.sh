@@ -134,34 +134,36 @@ no_save() { ! has_save; }
 has_players() { grep -q ' players$' "$state/rcon.calls" 2>/dev/null; }
 no_players() { ! has_players; }
 has_check() { grep -q ' checkModsNeedUpdate$' "$state/rcon.calls" 2>/dev/null; }
+no_check() { ! has_check; }
 no_rcon() { [ ! -s "$state/rcon.calls" ]; }
 out_has() { grep -qi -- "$1" "$tmp/out"; }
 rc_zero() { [ "$rc" -eq 0 ]; }
 players_count() { grep -c ' players$' "$state/rcon.calls" 2>/dev/null; }
-check_order() {
+players_before_check() {
   local check_line players_line
   check_line=$(grep -n ' checkModsNeedUpdate$' "$state/rcon.calls" | cut -d: -f1 | head -n1)
   players_line=$(grep -n ' players$' "$state/rcon.calls" | cut -d: -f1 | head -n1)
-  [ -n "$check_line" ] && [ -n "$players_line" ] && [ "$check_line" -lt "$players_line" ]
+  [ -n "$check_line" ] && [ -n "$players_line" ] && [ "$players_line" -lt "$check_line" ]
 }
 
-# S1: mods need update, one player online -> no save, no restart.
+# S1: one player online -> no mod check, no save, no restart.
 reset
 export MOCK_PLAYERS_FIRST=$'\033[1;32mPlayers connected (1):\033[0m'
 run
 check "S1 exits 0" rc_zero
-check "S1 checks mods" has_check
+check "S1 does not check mods" no_check
 check "S1 checks players" has_players
 check "S1 does not save" no_save
 check "S1 does not restart" no_restart
 check "S1 reports players online" out_has 'players online'
 
-# S2: mods are current -> stop before the player query.
+# S2: mods are current, no players -> one player query, no save.
 reset
 export MOCK_CHECK_RESULT='Mods updated'
 run
 check "S2 exits 0" rc_zero
-check "S2 does not query players" no_players
+check "S2 queries players once" test "$(players_count)" -eq 1
+check "S2 checks mods after players" players_before_check
 check "S2 does not save" no_save
 check "S2 does not restart" no_restart
 check "S2 reports up to date" out_has 'up to date'
@@ -173,7 +175,7 @@ check "S3 exits 0" rc_zero
 check "S3 saves" has_save
 check "S3 restarts" has_restart
 check "S3 queries players twice" test "$(players_count)" -eq 2
-check "S3 checks mods before players" check_order
+check "S3 checks players before mods" players_before_check
 check "S3 reports restart" out_has 'restart'
 
 # S4: a player joins after the save -> no restart.

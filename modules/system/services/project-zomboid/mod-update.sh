@@ -85,6 +85,14 @@ players_count() {
   printf '%s\n' "$out" | grep -oE 'Players connected \([0-9]+\)' | grep -oE '[0-9]+' | head -n1 || true
 }
 
+count=$(players_count)
+if [ -z "$count" ]; then
+  skip "could not read the connected players"
+fi
+if [ "$count" -gt 0 ]; then
+  skip "players online ($count); not checking for updates"
+fi
+
 if [ ! -r "$console" ]; then
   skip "server console $console is not readable"
 fi
@@ -111,14 +119,6 @@ case "$result" in
   *"Mods need update"*) log "mods need an update" ;;
   *) skip "mod check returned an unknown result" ;;
 esac
-
-count=$(players_count)
-if [ -z "$count" ]; then
-  skip "could not read the connected players"
-fi
-if [ "$count" -gt 0 ]; then
-  skip "players online ($count); not restarting"
-fi
 
 if ! rcon save >/dev/null 2>&1; then
   skip "save failed; not restarting"
