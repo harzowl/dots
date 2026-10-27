@@ -20,6 +20,12 @@ still pin them). Despite the name, `reservedSize` is a cap, not a reservation �
 tmpfs pages live in RAM on demand — so raise it only on a host with the memory
 headroom to back it (`"50%"` follows systemd's percentage of RAM).
 
+## Project Zomboid mod updates
+
+`dots.system.services.games.project-zomboid.autoUpdate` is off by default. When
+enabled, a timer checks `checkModsNeedUpdate`; if updates are needed it restarts
+the server only when RCON reports no players. The restart is the update step.
+
 ## Adding a service — security checklist
 
 Work through this before a new service or vhost is called done. It encodes the

@@ -209,6 +209,26 @@ mkDotsModule {
         '';
       };
 
+      autoUpdate = lib.mkOption {
+        type = lib.types.submodule {
+          options = {
+            enable = lib.mkEnableOption "automatic Project Zomboid mod-update checks";
+            interval = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 5;
+              description = "Minutes between mod-update checks.";
+            };
+            timeout = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 60;
+              description = "Seconds to wait for `checkModsNeedUpdate`'s console answer.";
+            };
+          };
+        };
+        default = { };
+        description = "Check for Workshop updates and restart the server only when no players are online.";
+      };
+
       serverPasswordSecret = lib.mkOption {
         type = lib.types.str;
         default = "ZOMBOID_SERVER_PASSWORD";
@@ -310,6 +330,20 @@ mkDotsModule {
         consumer = "${cfg.backend}-${cfg.name}.service";
         environmentFiles = cfg.secretEnvSources;
         mapping = cfg.secretEnv;
+      };
+
+      modUpdate = pkgs.writeShellApplication {
+        name = "zomboid-mod-update";
+        runtimeInputs = [
+          pkgs.coreutils
+          pkgs.gnugrep
+          pkgs.gnused
+          pkgs.util-linux
+          pkgs.rcon-cli
+          config.systemd.package
+          (if cfg.backend == "docker" then pkgs.docker else pkgs.podman)
+        ];
+        text = builtins.readFile ./mod-update.sh;
       };
 
       configDir = "${cfg.dataDir}/data/Server";
@@ -657,6 +691,25 @@ mkDotsModule {
                 "${cfg.backend}-${cfg.name}" = {
                   after = dependsOnUnits;
                   requires = dependsOnUnits;
+                };
+
+                "${cfg.name}-mod-update" = lib.mkIf cfg.autoUpdate.enable {
+                  description = "Check Project Zomboid mods and restart the server when idle";
+                  serviceConfig = {
+                    Type = "oneshot";
+                    ExecStart = "${modUpdate}/bin/zomboid-mod-update --backend ${cfg.backend} --container ${cfg.name} --unit ${cfg.backend}-${cfg.name}.service --config ${configFile} --console ${cfg.dataDir}/data/server-console.txt --env /run/${cfg.name}.env --lock /run/${cfg.name}-mod-update.lock --timeout ${toString cfg.autoUpdate.timeout}";
+                    TimeoutStartSec = "${toString (cfg.autoUpdate.timeout + 60)}s";
+                  };
+                };
+              };
+
+              timers = {
+                "${cfg.name}-mod-update" = lib.mkIf cfg.autoUpdate.enable {
+                  wantedBy = [ "timers.target" ];
+                  timerConfig = {
+                    OnBootSec = "${toString cfg.autoUpdate.interval}min";
+                    OnUnitActiveSec = "${toString cfg.autoUpdate.interval}min";
+                  };
                 };
               };
             };

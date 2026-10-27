@@ -104,6 +104,25 @@
               touch "$out"
             '';
 
+        project-zomboid-mod-update =
+          let
+            pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+          in
+          pkgs.runCommand "project-zomboid-mod-update"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.gnugrep
+                pkgs.gnused
+                pkgs.util-linux
+              ];
+            }
+            ''
+              bash ${./tests/project-zomboid-mod-update/run.sh} ${./modules/system/services/project-zomboid/mod-update.sh}
+              touch "$out"
+            '';
+
         env-keys =
           let
             pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
