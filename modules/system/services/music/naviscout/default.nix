@@ -286,7 +286,7 @@ mkDotsModule {
 
       catalog = {
         path = opt lib.types.str "Legacy JSON catalogue store, imported once.";
-        maxEntries = opt lib.types.ints.positive "Maximum catalogue entries.";
+        maxEntries = opt lib.types.ints.unsigned "Maximum catalogue entries (0 = no limit).";
         ttl = opt lib.types.str "Catalogue entry lifetime (a Go duration).";
         searchTtl = opt lib.types.str "Catalogue search cache lifetime (a Go duration).";
         enrich = opt lib.types.bool "Enrich catalogue entries in the background.";
