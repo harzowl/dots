@@ -4,7 +4,7 @@ let
 
   defaults = {
     name = "jellyfin";
-    image = "jellyfin/jellyfin:12.2";
+    image = "jellyfin/jellyfin:12.4";
     ports = [ "8096:8096" ];
     openFirewall = true;
   };
