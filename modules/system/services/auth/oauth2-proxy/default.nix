@@ -81,12 +81,10 @@ let
       toString v;
 in
 {
-  options.dots.system.services.auth.oauth2-proxy = {
-    gates = lib.mkOption {
-      type = optionType;
-      default = { };
-      description = "oauth2-proxy gates, one container per fronted app.";
-    };
+  options.dots.system.services.auth.oauth2-proxy.gates = lib.mkOption {
+    type = optionType;
+    default = { };
+    description = "oauth2-proxy gates, one container per fronted app.";
   };
 
   config =
@@ -146,6 +144,17 @@ in
           if lib.hasInfix ":" s then s else "${s}:${s}"
         ) [ g.port ];
       };
+
+      waitForOidc = pkgs.writeShellScript "wait-for-oidc" ''
+        url="https://auth.${config.dots.system.core.domain}/realms/${config.dots.system.core.realm}/.well-known/openid-configuration"
+        for _ in $(seq 1 60); do
+          if ${pkgs.curl}/bin/curl -fsS --max-time 2 "$url" >/dev/null; then
+            exit 0
+          fi
+          sleep 2
+        done
+        exit 1
+      '';
     in
     {
       virtualisation.oci-containers.containers = lib.mapAttrs' (
@@ -164,7 +173,10 @@ in
             # Keycloak (re)start would otherwise kill it for good: disable the
             # start-rate limit so the unit keeps retrying until the IdP is back.
             startLimitIntervalSec = 0;
-            serviceConfig.RestartSec = 5;
+            serviceConfig = {
+              RestartSec = 5;
+              ExecStartPre = lib.mkAfter [ "${waitForOidc}/bin/wait-for-oidc" ];
+            };
           }
         ) enabled
         // lib.foldl' (acc: name: acc // (wire name enabled.${name}).networkUnit) { } (

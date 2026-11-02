@@ -213,6 +213,15 @@ mkDotsModule {
 
       loop = pkgs.writeShellScript "soularr-loop" (builtins.readFile ./run-loop.sh);
       renderer = pkgs.writeText "soularr-render-config.py" (builtins.readFile ./render-config.py);
+      waitForLidarr = pkgs.writeShellScript "soularr-wait-for-lidarr" ''
+        for _ in $(seq 1 60); do
+          if ${pkgs.curl}/bin/curl -fsS --max-time 2 ${lib.escapeShellArg "${cfg.lidarrUrl}/ping"} >/dev/null; then
+            exit 0
+          fi
+          sleep 2
+        done
+        exit 1
+      '';
     in
     {
       assertions = [
@@ -267,13 +276,16 @@ mkDotsModule {
                 cfg.stateDir
               ]
               ++ lib.optional (cfg.logDir != null) cfg.logDir;
-              ExecStartPre = lib.escapeShellArgs (
-                [
-                  "${pkgs.python3}/bin/python3"
-                  (toString renderer)
-                ]
-                ++ renderArgs
-              );
+              ExecStartPre = [
+                (lib.escapeShellArgs (
+                  [
+                    "${pkgs.python3}/bin/python3"
+                    (toString renderer)
+                  ]
+                  ++ renderArgs
+                ))
+                "${waitForLidarr}/bin/soularr-wait-for-lidarr"
+              ];
               ExecStart = lib.escapeShellArgs [
                 (toString loop)
                 (toString cfg.interval)
