@@ -427,8 +427,11 @@ in
           }
           // {
             "${spec.backend}-${spec.name}" = {
+              after = [ "${spec.backend}.service" ];
+              requires = [ "${spec.backend}.service" ];
               startLimitBurst = lib.mkDefault (spec.startLimitBurst or 5);
               startLimitIntervalSec = lib.mkDefault (spec.startLimitIntervalSec or 60);
+              serviceConfig.RestartSec = lib.mkDefault "2s";
             };
           }
           // lib.optionalAttrs managedNetwork {
