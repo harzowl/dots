@@ -1,4 +1,10 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  nvf,
+  ...
+}:
+
 {
   options.dots.home.users = lib.mkOption {
     type = lib.types.attrsOf lib.types.anything;
@@ -23,7 +29,12 @@
         shell = config.dots.system.users.${name}.shell or null;
       in
       lib.mkMerge [
-        { imports = [ (import ../../home { root = [ ]; }) ]; }
+        {
+          imports = [
+            (import ../../home { root = [ ]; })
+            nvf.homeManagerModules.default
+          ];
+        }
         (lib.optionalAttrs (shell == "fish") {
           programs.shell.fish.enable = lib.mkDefault true;
         })

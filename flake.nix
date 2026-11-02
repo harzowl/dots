@@ -9,10 +9,20 @@
       url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    nvf = {
+      url = "github:NotAShelf/nvf";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
-    { self, home-manager, ... }@inputs:
+    {
+      self,
+      home-manager,
+      nvf,
+      ...
+    }@inputs:
     {
       nixosModules = {
         default =
@@ -25,6 +35,7 @@
           };
 
         home = {
+          _module.args.nvf = nvf;
           imports = [
             home-manager.nixosModules.home-manager
             (import ./modules/system/home)
@@ -34,7 +45,12 @@
         presetServer = import ./presets/server.nix;
       };
 
-      homeModules.default = import ./modules/home;
+      homeModules.default = { ... }: {
+        imports = [
+          nvf.homeManagerModules.default
+          (import ./modules/home)
+        ];
+      };
 
       formatter.x86_64-linux = inputs.nixpkgs.legacyPackages.x86_64-linux.nixfmt;
 

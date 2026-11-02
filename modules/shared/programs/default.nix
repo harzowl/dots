@@ -7,6 +7,7 @@
 }:
 {
   imports = [
+    (import ./editors { inherit target root; })
     (import ./files { inherit target root; })
     (import ./monitoring { inherit target root; })
     (import ./music { inherit target root; })
