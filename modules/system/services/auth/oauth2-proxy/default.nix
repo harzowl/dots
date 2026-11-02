@@ -145,7 +145,7 @@ in
         ) [ g.port ];
       };
 
-      waitForOidc = pkgs.writeShellScript "wait-for-oidc" ''
+      waitForOidc = pkgs.writeShellScriptBin "wait-for-oidc" ''
         url="https://auth.${config.dots.system.core.domain}/realms/${config.dots.system.core.realm}/.well-known/openid-configuration"
         for _ in $(seq 1 60); do
           if ${pkgs.curl}/bin/curl -fsS --max-time 2 "$url" >/dev/null; then
