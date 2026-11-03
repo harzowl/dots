@@ -81,6 +81,26 @@ mkDotsModule {
         default = "10g";
       };
 
+      restartPolicy = lib.mkOption {
+        type = lib.types.enum [
+          "no"
+          "on-success"
+          "on-failure"
+          "on-abnormal"
+          "on-abort"
+          "on-watchdog"
+          "always"
+        ];
+        default = "always";
+        description = "systemd restart policy for the server container.";
+      };
+
+      restartSec = lib.mkOption {
+        type = lib.types.str;
+        default = "30s";
+        description = "Delay between systemd restart attempts.";
+      };
+
       dataDir = lib.mkOption {
         type = lib.types.str;
         default = "/var/lib/zomboid";
@@ -691,6 +711,11 @@ mkDotsModule {
                 "${cfg.backend}-${cfg.name}" = {
                   after = dependsOnUnits;
                   requires = dependsOnUnits;
+                  startLimitIntervalSec = 0;
+                  serviceConfig = {
+                    Restart = lib.mkForce cfg.restartPolicy;
+                    RestartSec = lib.mkForce cfg.restartSec;
+                  };
                 };
 
                 "${cfg.name}-mod-update" = lib.mkIf cfg.autoUpdate.enable {
