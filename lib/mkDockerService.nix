@@ -65,6 +65,26 @@ in
         '';
       };
 
+      restartPolicy = opt "restartPolicy" {
+        type = lib.types.enum [
+          "no"
+          "on-success"
+          "on-failure"
+          "on-abnormal"
+          "on-abort"
+          "on-watchdog"
+          "always"
+        ];
+        default = "on-failure";
+        description = "systemd `Restart=` policy for the container unit.";
+      };
+
+      restartSec = opt "restartSec" {
+        type = lib.types.str;
+        default = "2s";
+        description = "Delay between systemd restart attempts.";
+      };
+
       ports = opt "ports" {
         type = lib.types.listOf (lib.types.either lib.types.port lib.types.str);
         default = [ ];
@@ -431,7 +451,10 @@ in
               requires = [ "${spec.backend}.service" ];
               startLimitBurst = lib.mkDefault (spec.startLimitBurst or 5);
               startLimitIntervalSec = lib.mkDefault (spec.startLimitIntervalSec or 60);
-              serviceConfig.RestartSec = lib.mkDefault "2s";
+              serviceConfig = {
+                Restart = lib.mkForce (spec.restartPolicy or "on-failure");
+                RestartSec = lib.mkDefault (spec.restartSec or "2s");
+              };
             };
           }
           // lib.optionalAttrs managedNetwork {
