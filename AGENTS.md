@@ -92,5 +92,11 @@ Every commit follows [Conventional Commits](https://www.conventionalcommits.org/
   options *are* the container's: a new `mkDockerService` option then reaches
   every container service (feishin, navidrome, the gates, the shim, …) with no
   per-module change.
+- **A generic container option belongs in `mkDockerService`, not one service.**
+  If it can serve more than one container — restart policy, restart delay,
+  logging, networking — add it once with a default and expose only
+  service-specific settings from service modules. A generic option under
+  `dots.system.services.*` is a one-off API every other container must
+  duplicate.
 - Adding a service or a vhost inherits the security invariants above; do not opt
   out, and do not re-implement them in the host.
