@@ -131,6 +131,9 @@ in
             setXauthrequest = true;
             whitelistDomains = ".${config.dots.system.core.domain}";
             cookieSecure = true;
+            # Parallel starts would otherwise overwrite the one CSRF cookie.
+            cookieCsrfPerRequest = true;
+            cookieCsrfPerRequestLimit = 10;
             skipProviderButton = true;
             excludeLoggingPaths = [ "/oauth2/callback" ];
           }
