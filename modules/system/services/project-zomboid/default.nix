@@ -11,6 +11,9 @@ let
       16262
     ];
     extraOptions = [ "--stop-timeout=30" ];
+    restartPolicy = "always";
+    restartSec = "30s";
+    startLimitIntervalSec = 0;
     settings = {
       puid = 1000;
       pgid = 1000;
@@ -79,26 +82,6 @@ mkDotsModule {
     // {
       memoryLimit = (mkDockerService.memoryLimitOption { inherit lib; }) // {
         default = "10g";
-      };
-
-      restartPolicy = lib.mkOption {
-        type = lib.types.enum [
-          "no"
-          "on-success"
-          "on-failure"
-          "on-abnormal"
-          "on-abort"
-          "on-watchdog"
-          "always"
-        ];
-        default = "always";
-        description = "systemd restart policy for the server container.";
-      };
-
-      restartSec = lib.mkOption {
-        type = lib.types.str;
-        default = "30s";
-        description = "Delay between systemd restart attempts.";
       };
 
       dataDir = lib.mkOption {
@@ -711,11 +694,6 @@ mkDotsModule {
                 "${cfg.backend}-${cfg.name}" = {
                   after = dependsOnUnits;
                   requires = dependsOnUnits;
-                  startLimitIntervalSec = 0;
-                  serviceConfig = {
-                    Restart = lib.mkForce cfg.restartPolicy;
-                    RestartSec = lib.mkForce cfg.restartSec;
-                  };
                 };
 
                 "${cfg.name}-mod-update" = lib.mkIf cfg.autoUpdate.enable {
