@@ -134,6 +134,8 @@ in
             # Parallel starts would otherwise overwrite the one CSRF cookie.
             cookieCsrfPerRequest = true;
             cookieCsrfPerRequestLimit = 10;
+            # A login tab left open past the old 15m CSRF lifetime used to 403.
+            cookieCsrfExpire = "24h";
             skipProviderButton = true;
             excludeLoggingPaths = [ "/oauth2/callback" ];
           }
