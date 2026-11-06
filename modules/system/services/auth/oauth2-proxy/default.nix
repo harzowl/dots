@@ -133,7 +133,8 @@ in
             cookieSecure = true;
             # Parallel starts would otherwise overwrite the one CSRF cookie.
             cookieCsrfPerRequest = true;
-            cookieCsrfPerRequestLimit = 10;
+            # Never evict a pending login state; that is the other way to 403.
+            cookieCsrfPerRequestLimit = 0;
             # A login tab left open past the old 15m CSRF lifetime used to 403.
             cookieCsrfExpire = "24h";
             skipProviderButton = true;
