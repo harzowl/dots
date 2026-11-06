@@ -176,11 +176,13 @@ in
         name: g: lib.nameValuePair "oauth2-proxy-${name}" (lib.mkIf g.enable (container name g))
       ) gates;
 
-      networking.firewall.extraInputRules = lib.concatMapStringsSep "\n" (
+      # The iptables firewall backend ignores nftables `extraInputRules`; insert
+      # the edge-only allow rule before the default lo/established rules.
+      networking.firewall.extraCommands = lib.concatMapStringsSep "\n" (
         g:
-        lib.optionalString (
-          g.trustedProxyIps != [ ]
-        ) "ip saddr { ${lib.concatStringsSep ", " g.trustedProxyIps} } tcp dport ${toString g.port} accept"
+        lib.concatMapStringsSep "\n" (
+          ip: "iptables -I nixos-fw 1 -s ${ip} -p tcp --dport ${toString g.port} -j nixos-fw-accept"
+        ) g.trustedProxyIps
       ) (lib.attrValues enabled);
 
       systemd.services =
