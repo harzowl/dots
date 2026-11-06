@@ -10,6 +10,8 @@ let
   camelToUpperSnake = import ../../../../../lib/camelToUpperSnake.nix { inherit lib; };
 
   domain = config.dots.system.core.domain;
+  edgeIp = config.dots.system.networking.wireguard.mesh.memberIps.edge or null;
+  defaultTrustedProxyIps = lib.optional (edgeIp != null) "${edgeIp}/32";
 
   defaults = {
     image = "quay.io/oauth2-proxy/oauth2-proxy:latest";
@@ -61,6 +63,11 @@ let
             type = lib.types.nullOr (lib.types.listOf lib.types.str);
             default = sso.allowedRoles or null;
             description = "Roles a user must hold to pass the gate; `null` allows any authenticated user.";
+          };
+          trustedProxyIps = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = defaultTrustedProxyIps;
+            description = "Proxy IPs/CIDRs allowed to supply X-Forwarded-* headers and reach the gate port. Defaults to the edge mesh peer.";
           };
         };
       }
@@ -124,20 +131,22 @@ in
             httpAddress = "0.0.0.0:${toString g.port}";
             provider = "keycloak-oidc";
             oidcIssuerUrl = "https://auth.${config.dots.system.core.domain}/realms/${config.dots.system.core.realm}";
-            emailDomains = "*";
-            insecureOidcAllowUnverifiedEmail = true;
+            emailDomains = [ config.dots.system.core.domain ];
+            insecureOidcAllowUnverifiedEmail = false;
+            codeChallengeMethod = "S256";
             oidcEmailClaim = "preferred_username";
             reverseProxy = true;
+            inherit (g) trustedProxyIps;
             setXauthrequest = true;
             whitelistDomains = ".${config.dots.system.core.domain}";
             cookieSecure = true;
             # Parallel starts would otherwise overwrite the one CSRF cookie.
             cookieCsrfPerRequest = true;
-            # Never evict a pending login state; that is the other way to 403.
-            cookieCsrfPerRequestLimit = 0;
-            # A login tab left open past the old 15m CSRF lifetime used to 403.
-            cookieCsrfExpire = "24h";
-            skipProviderButton = true;
+            # Keep pending logins without letting the cookie jar grow forever.
+            cookieCsrfPerRequestLimit = 20;
+            cookieCsrfExpire = "4h";
+            cookieSamesite = "lax";
+            skipProviderButton = false;
             excludeLoggingPaths = [ "/oauth2/callback" ];
           }
           // settingsFor g
@@ -167,7 +176,12 @@ in
         name: g: lib.nameValuePair "oauth2-proxy-${name}" (lib.mkIf g.enable (container name g))
       ) gates;
 
-      networking.firewall.allowedTCPPorts = map (g: g.port) (lib.attrValues enabled);
+      networking.firewall.extraInputRules = lib.concatMapStringsSep "\n" (
+        g:
+        lib.optionalString (
+          g.trustedProxyIps != [ ]
+        ) "ip saddr { ${lib.concatStringsSep ", " g.trustedProxyIps} } tcp dport ${toString g.port} accept"
+      ) (lib.attrValues enabled);
 
       systemd.services =
         lib.mapAttrs' (
