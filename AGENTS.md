@@ -29,6 +29,12 @@ thin and put reusable behaviour here.
   `.githooks/pre-commit` runs `scripts/personal-data-guard.sh`, which derives
   the committer's own email, domain, FQDN and login at run time — no private
   value is stored — and fails if any appear in a staged file.
+- **Never put personal data anywhere it can leak.** A real username, email
+  address (including `mailto:`) or host name must not appear in a User-Agent,
+  URL, query string, log line, notification, analytics event or third-party
+  request; use a fixed product/version string and generic placeholders. A real
+  identifier belongs in the consuming host's machine config, not in a module
+  default or a test fixture.
 
 ## Commit messages (binding)
 
