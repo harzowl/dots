@@ -106,8 +106,10 @@ mkDotsModule {
         default = "7d";
         description = ''
           Lifetime of a signed subsonic token (a Go duration, or a `Nd` day
-          count). Clients cache it and re-login when it expires, so keep it
-          short — it is what bounds a leaked token, since the shim is stateless.
+          count). Tokens minted for a PAT login carry the PAT hash (`ph`), and
+          every request re-checks that hash against the local store, so the TTL
+          is a client refresh hint rather than the hard session bound. Tokens
+          without `ph` keep strict expiry and make the client re-login.
         '';
       };
       tokenAud = lib.mkOption {
@@ -135,7 +137,8 @@ mkDotsModule {
         description = ''
           Go duration between passes that re-check every stored PAT against the
           Keycloak PAT SPI and drop the revoked ones. This bounds how long a
-          revoked PAT can keep authenticating an md5-only client.
+          revoked PAT can keep a `ph`-bound session or an md5-only client
+          authenticated; the host chooses the cadence.
         '';
       };
       transientGrace = lib.mkOption {
@@ -143,9 +146,9 @@ mkDotsModule {
         default = "15m";
         description = ''
           Go duration a stored PAT may go without a successful validation
-          before session acceptance and md5 matching refuse it. A transient
-          Keycloak failure keeps the PAT but does not advance its timestamp,
-          so an outage longer than this fails closed.
+          before the per-request store check and md5 matching refuse it. A
+          transient Keycloak failure keeps the PAT but does not advance its
+          timestamp, so an outage longer than this fails closed.
         '';
       };
     };

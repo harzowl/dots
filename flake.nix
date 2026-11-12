@@ -62,6 +62,15 @@
       checks.x86_64-linux = {
         subsonic-auth = self.packages.x86_64-linux.subsonic-auth;
 
+        caddy-redaction =
+          let
+            pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+          in
+          import ./checks/caddy-redaction.nix {
+            inherit pkgs;
+            inherit (pkgs) lib;
+          };
+
         lints =
           let
             pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;

@@ -86,6 +86,8 @@ mkDotsModule {
               delete state
             }
             request>headers>Referer delete
+            request>headers>X-Nd-Authorization delete
+            resp_headers>X-Nd-Authorization delete
           }
         '';
         description = ''
@@ -93,7 +95,8 @@ mkDotsModule {
           `routes` and the caller's `virtualHosts`), so a credential or OAuth
           `code`/`state` carried in a request URI never reaches a log file. The
           default redacts the Subsonic `t`/`s`/`p`, OIDC `code`/`state`, a
-          generic `token` query parameter and the `Referer` header; the module
+          generic `token` query parameter, the `Referer` header and the
+          session-binding `X-Nd-Authorization` header in both directions; the module
           prepends the usual `output file <logDir>/access-<host>.log` line. Set
           this to `null` to opt a host out and fall back to Caddy's default
           logging, or override it (e.g. `lib.mkForce`) to customise. A vhost
