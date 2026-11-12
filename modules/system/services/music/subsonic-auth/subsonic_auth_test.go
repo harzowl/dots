@@ -258,6 +258,49 @@ func TestLoginReturnsDerivedTokenNotPAT(t *testing.T) {
 	}
 }
 
+func TestLoginMintsPATBoundToken(t *testing.T) {
+	const (
+		user = "dummy-DO-NOT-USE@example.invalid"
+		pat  = "dummy-DO-NOT-USE-0000000000000000000000"
+	)
+	var kcCalls int32
+	kc := fakeKeycloak(t, user, pat, &kcCalls)
+	defer kc.Close()
+	up := fakeUpstream(t, &upstreamCapture{})
+	defer up.Close()
+
+	srv := newTestServer(t, kc.URL, up.URL, time.Minute)
+	rec := postLogin(t, srv, user, pat)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %q)", rec.Code, rec.Body.String())
+	}
+	var resp loginResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("body is not json: %v (%q)", err, rec.Body.String())
+	}
+	want := PATHash(pat)
+	for name, tok := range map[string]string{"subsonicToken": resp.SubsonicToken, "token": resp.Token} {
+		claims, _, err := srv.signer.VerifyClaims(tok, user)
+		if err != nil {
+			t.Fatalf("%s does not verify: %v", name, err)
+		}
+		if claims.Ph != want {
+			t.Fatalf("%s ph = %q, want PATHash(pat) = %q", name, claims.Ph, want)
+		}
+		parts := strings.Split(tok, ".")
+		if len(parts) != 4 {
+			t.Fatalf("%s is not a v1 signed token", name)
+		}
+		raw, err := base64.RawURLEncoding.DecodeString(parts[2])
+		if err != nil {
+			t.Fatalf("%s payload is not base64url: %v", name, err)
+		}
+		if strings.Contains(string(raw), pat) {
+			t.Fatalf("%s payload contains the PAT", name)
+		}
+	}
+}
+
 func TestLoginBadPATReturns401(t *testing.T) {
 	tests := []struct {
 		name string

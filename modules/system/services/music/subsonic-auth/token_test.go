@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -113,6 +114,136 @@ func TestSignedTokenExpiredRejected(t *testing.T) {
 	s.now = func() time.Time { return base.Add(time.Minute) }
 	if _, err := s.Verify(tok, "dummy-DO-NOT-USE@example.invalid"); err == nil {
 		t.Fatal("expired token verified")
+	}
+}
+
+func decodeTokenClaims(t *testing.T, tok string) tokenClaims {
+	t.Helper()
+	parts := strings.Split(tok, ".")
+	if len(parts) != 4 {
+		t.Fatalf("token is not four segments")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		t.Fatalf("payload is not base64url: %v", err)
+	}
+	var claims tokenClaims
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		t.Fatalf("payload is not json: %v", err)
+	}
+	return claims
+}
+
+func TestSignedTokenBindAndVerifyClaims(t *testing.T) {
+	s := testSigner(t, time.Hour)
+	sub := "dummy-DO-NOT-USE@example.invalid"
+	pat := "dummy-DO-NOT-USE-0000000000000000000000"
+	ph := PATHash(pat)
+	base := time.Unix(1700000000, 0)
+	s.now = func() time.Time { return base }
+
+	tok, err := s.SignWithPAT(sub, pat)
+	if err != nil {
+		t.Fatalf("SignWithPAT: %v", err)
+	}
+	claims, expired, err := s.VerifyClaims(tok, sub)
+	if err != nil {
+		t.Fatalf("VerifyClaims: %v", err)
+	}
+	if expired {
+		t.Fatal("unexpired token reported expired")
+	}
+	if claims.Sub != sub || claims.Ph != ph {
+		t.Fatalf("claims = sub %q ph %q, want sub %q ph %q", claims.Sub, claims.Ph, sub, ph)
+	}
+
+	s.now = func() time.Time { return base.Add(time.Hour) }
+	expClaims, expired, err := s.VerifyClaims(tok, sub)
+	if err != nil {
+		t.Fatalf("VerifyClaims on an expired token: %v", err)
+	}
+	if !expired {
+		t.Fatal("expired token not reported expired")
+	}
+	if expClaims.Sub != claims.Sub || expClaims.Ph != claims.Ph || expClaims.Jti != claims.Jti {
+		t.Fatalf("expired claims = %+v, want the minted claims", expClaims)
+	}
+
+	if _, err := s.Verify(tok, sub); !errors.Is(err, errTokenExpired) {
+		t.Fatalf("Verify on an expired token = %v, want errTokenExpired", err)
+	}
+}
+
+func TestSignedTokenSignWithPh(t *testing.T) {
+	s := testSigner(t, time.Hour)
+	sub := "dummy-DO-NOT-USE@example.invalid"
+	ph := PATHash("dummy-DO-NOT-USE-0000000000000000000000")
+	tok, err := s.SignWithPh(sub, ph)
+	if err != nil {
+		t.Fatalf("SignWithPh: %v", err)
+	}
+	claims, _, err := s.VerifyClaims(tok, sub)
+	if err != nil {
+		t.Fatalf("VerifyClaims: %v", err)
+	}
+	if claims.Ph != ph {
+		t.Fatalf("ph = %q, want %q", claims.Ph, ph)
+	}
+}
+
+func TestSignedTokenWithoutPh(t *testing.T) {
+	s := testSigner(t, time.Hour)
+	sub := "dummy-DO-NOT-USE@example.invalid"
+	tok, err := s.Sign(sub)
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	claims, expired, err := s.VerifyClaims(tok, sub)
+	if err != nil {
+		t.Fatalf("VerifyClaims: %v", err)
+	}
+	if expired {
+		t.Fatal("fresh token reported expired")
+	}
+	if claims.Ph != "" {
+		t.Fatalf("ph = %q, want empty", claims.Ph)
+	}
+}
+
+func TestVerifyClaimsRejectsTampered(t *testing.T) {
+	s := testSigner(t, time.Hour)
+	sub := "dummy-DO-NOT-USE@example.invalid"
+	tok, err := s.SignWithPAT(sub, "dummy-DO-NOT-USE-0000000000000000000000")
+	if err != nil {
+		t.Fatalf("SignWithPAT: %v", err)
+	}
+	parts := strings.Split(tok, ".")
+	flip := func(seg string) string {
+		if seg[0] == 'A' {
+			return "B" + seg[1:]
+		}
+		return "A" + seg[1:]
+	}
+	for name, bad := range map[string]string{
+		"payload":   parts[0] + "." + parts[1] + "." + flip(parts[2]) + "." + parts[3],
+		"signature": parts[0] + "." + parts[1] + "." + parts[2] + "." + flip(parts[3]),
+		"kid":       parts[0] + "." + "9" + "." + parts[2] + "." + parts[3],
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := s.VerifyClaims(bad, sub); err == nil {
+				t.Fatalf("tampered token (%s) verified", name)
+			}
+		})
+	}
+	if _, _, err := s.VerifyClaims(tok, "dummy-DO-NOT-USE-other@example.invalid"); !errors.Is(err, errTokenSubject) {
+		t.Fatalf("subject mismatch = %v, want errTokenSubject", err)
+	}
+	other, err := newTokenSigner("1", map[string][]byte{"1": bytes.Repeat([]byte("k"), 32)}, time.Hour, "something-else")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := other.VerifyClaims(tok, sub); !errors.Is(err, errTokenAudience) {
+		t.Fatalf("audience mismatch = %v, want errTokenAudience", err)
 	}
 }
 

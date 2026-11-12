@@ -270,7 +270,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.signer.Sign(identity)
+	token, err := s.signer.SignWithPAT(identity, req.Password)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

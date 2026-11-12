@@ -61,6 +61,14 @@ type tokenClaims struct {
 	Exp int64  `json:"exp"`
 	Jti string `json:"jti"`
 	Ver int    `json:"ver"`
+	Ph  string `json:"ph,omitempty"`
+}
+
+// PATHash is the unpadded base64url SHA-256 of a PAT: the `ph` claim binding a
+// token to the credential that minted it, without carrying the PAT itself.
+func PATHash(pat string) string {
+	sum := sha256.Sum256([]byte(pat))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 // tokenSigner mints and verifies the shim's signed subsonic tokens. It holds one
@@ -97,8 +105,23 @@ func newTokenSigner(activeKid string, keys map[string][]byte, ttl time.Duration,
 	return &tokenSigner{activeKid: activeKid, keys: ring, ttl: ttl, audience: audience, now: time.Now}, nil
 }
 
-// Sign mints a token for the Keycloak identity `sub`.
+// Sign mints an unbound token for the Keycloak identity `sub`.
 func (s *tokenSigner) Sign(sub string) (string, error) {
+	return s.sign(sub, "")
+}
+
+// SignWithPAT mints a token bound to the validated PAT by its hash.
+func (s *tokenSigner) SignWithPAT(sub, pat string) (string, error) {
+	return s.sign(sub, PATHash(pat))
+}
+
+// SignWithPh mints a token carrying a PAT hash, so a refresh need not see the
+// plaintext PAT.
+func (s *tokenSigner) SignWithPh(sub, ph string) (string, error) {
+	return s.sign(sub, ph)
+}
+
+func (s *tokenSigner) sign(sub, ph string) (string, error) {
 	if sub == "" {
 		return "", errors.New("token subject must not be empty")
 	}
@@ -115,6 +138,7 @@ func (s *tokenSigner) Sign(sub string) (string, error) {
 		Iat: now.Unix(),
 		Exp: now.Add(s.ttl).Unix(),
 		Jti: jti,
+		Ph:  ph,
 	}
 	payload, err := json.Marshal(claims)
 	if err != nil {
@@ -125,48 +149,60 @@ func (s *tokenSigner) Sign(sub string) (string, error) {
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(s.mac(s.keys[s.activeKid], signingInput)), nil
 }
 
-// Verify checks a token's signature, audience, subject and expiry, and returns
-// the identity it was minted for. When `user` is non-empty it must equal the
+// VerifyClaims checks a token's signature, audience, subject and `iat`, and
+// reports expiry as a flag instead of an error so a `ph` token can outlive its
+// `exp` while its PAT remains valid. When `user` is non-empty it must equal the
 // token's `sub` (the Subsonic `u` parameter): a token is bound to one identity.
-func (s *tokenSigner) Verify(token, user string) (string, error) {
+func (s *tokenSigner) VerifyClaims(token, user string) (tokenClaims, bool, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 4 || parts[0] != tokenVersion {
-		return "", errTokenMalformed
+		return tokenClaims{}, false, errTokenMalformed
 	}
 	version, kid, p, sigPart := parts[0], parts[1], parts[2], parts[3]
 
 	key, ok := s.keys[kid]
 	if !ok {
-		return "", errTokenUnknownKey
+		return tokenClaims{}, false, errTokenUnknownKey
 	}
 	if !hmac.Equal(s.mac(key, version+"."+kid+"."+p), decodeSig(sigPart)) {
-		return "", errTokenBadSignature
+		return tokenClaims{}, false, errTokenBadSignature
 	}
 
 	raw, err := base64.RawURLEncoding.DecodeString(p)
 	if err != nil {
-		return "", errTokenMalformed
+		return tokenClaims{}, false, errTokenMalformed
 	}
 	var claims tokenClaims
 	if err := json.Unmarshal(raw, &claims); err != nil {
-		return "", errTokenMalformed
+		return tokenClaims{}, false, errTokenMalformed
 	}
 
 	now := s.now()
-	if claims.Exp <= 0 || !now.Before(time.Unix(claims.Exp, 0)) {
-		return "", errTokenExpired
-	}
+	expired := claims.Exp <= 0 || !now.Before(time.Unix(claims.Exp, 0))
 	if claims.Iat > 0 && time.Unix(claims.Iat, 0).After(now.Add(tokenIatLeeway)) {
-		return "", errTokenMalformed
+		return tokenClaims{}, false, errTokenMalformed
 	}
 	if claims.Aud != s.audience {
-		return "", errTokenAudience
+		return tokenClaims{}, false, errTokenAudience
 	}
 	if claims.Sub == "" {
-		return "", errTokenMalformed
+		return tokenClaims{}, false, errTokenMalformed
 	}
 	if user != "" && claims.Sub != user {
-		return "", errTokenSubject
+		return tokenClaims{}, false, errTokenSubject
+	}
+	return claims, expired, nil
+}
+
+// Verify is the strict verifier: it rejects an expired token and returns the
+// identity it was minted for.
+func (s *tokenSigner) Verify(token, user string) (string, error) {
+	claims, expired, err := s.VerifyClaims(token, user)
+	if err != nil {
+		return "", err
+	}
+	if expired {
+		return "", errTokenExpired
 	}
 	return claims.Sub, nil
 }
