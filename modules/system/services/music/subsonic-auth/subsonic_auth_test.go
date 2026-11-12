@@ -179,7 +179,7 @@ func fakeUpstream(t *testing.T, cap *upstreamCapture) *httptest.Server {
 
 func newTestServer(t *testing.T, keycloakURL string, upstreamURL string, ttl time.Duration) *server {
 	t.Helper()
-	return newTestServerWithStore(t, keycloakURL, upstreamURL, ttl, newPATStore("", nil))
+	return newTestServerWithStore(t, keycloakURL, upstreamURL, ttl, newPATStore("", nil, 0))
 }
 
 func newTestServerWithStore(t *testing.T, keycloakURL string, upstreamURL string, ttl time.Duration, store *patStore) *server {
@@ -930,7 +930,7 @@ func newTestServerWithRoutes(t *testing.T, keycloakURL, fallbackURL, restURL str
 		cache:          newCredCache(ttl, 16),
 		signer:         testSigner(t, ttl),
 		validator:      v,
-		patStore:       newPATStore("", nil),
+		patStore:       newPATStore("", nil, 0),
 		upstream:       mustURL(fallbackURL),
 		routes:         []upstreamRoute{{path: "/rest", upstream: mustURL(restURL)}},
 	})

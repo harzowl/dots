@@ -86,7 +86,7 @@ func newServer(d serverDeps) *server {
 	}
 	store := d.patStore
 	if store == nil {
-		store = newPATStore("", nil)
+		store = newPATStore("", nil, 0)
 	}
 	routes := make([]routeProxy, 0, len(d.routes))
 	for _, rt := range d.routes {
@@ -295,7 +295,6 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 func (s *server) validatePAT(ctx context.Context, user, token string) (string, bool) {
 	key := sha256.Sum256([]byte(user + "\x00" + token))
 	if identity, ok := s.cache.get(key); ok {
-		s.recordPAT(identity, token)
 		return identity, true
 	}
 	identity, err := s.validator.validate(ctx, user, token)

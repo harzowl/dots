@@ -138,6 +138,16 @@ mkDotsModule {
           revoked PAT can keep authenticating an md5-only client.
         '';
       };
+      transientGrace = lib.mkOption {
+        type = lib.types.str;
+        default = "15m";
+        description = ''
+          Go duration a stored PAT may go without a successful validation
+          before session acceptance and md5 matching refuse it. A transient
+          Keycloak failure keeps the PAT but does not advance its timestamp,
+          so an outage longer than this fails closed.
+        '';
+      };
     };
 
   toConfig =
@@ -173,6 +183,7 @@ mkDotsModule {
           inherit (cfg) validateTimeout;
           patStoreDir = cfg.stateDir;
           patRevalidateInterval = cfg.revalidateInterval;
+          patTransientGrace = cfg.transientGrace;
         };
       };
       inherit defaults;

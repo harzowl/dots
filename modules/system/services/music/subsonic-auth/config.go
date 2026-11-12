@@ -30,6 +30,7 @@ type config struct {
 	patStoreDir           string
 	patStoreKey           []byte
 	patRevalidateInterval time.Duration
+	patTransientGrace     time.Duration
 
 	// Signed-token settings. The signing key itself is never a `settings` value
 	// (that would put it in the Nix store); it arrives via `environmentFiles`
@@ -100,6 +101,10 @@ func loadConfig() (config, error) {
 
 	cfg.patStoreDir = getenv("PAT_STORE_DIR", "/var/lib/subsonic-auth")
 	cfg.patRevalidateInterval = getenvDuration("PAT_REVALIDATE_INTERVAL", time.Hour)
+	cfg.patTransientGrace = getenvDuration("PAT_TRANSIENT_GRACE", defaultPATTransientGrace)
+	if cfg.patTransientGrace <= 0 {
+		cfg.patTransientGrace = defaultPATTransientGrace
+	}
 	if raw := os.Getenv("SUBSONIC_PAT_KEY"); raw != "" {
 		key, err := parseStoreKey(raw)
 		if err != nil {

@@ -38,7 +38,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid subsonic token signing key: %v", err)
 	}
-	store := newPATStore(cfg.patStoreDir, cfg.patStoreKey)
+	store := newPATStore(cfg.patStoreDir, cfg.patStoreKey, cfg.patTransientGrace)
 	if !store.Enabled() {
 		log.Printf("subsonic-auth: PAT store disabled (SUBSONIC_PAT_KEY unset); md5-only clients will be refused")
 	} else {

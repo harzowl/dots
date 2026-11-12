@@ -23,12 +23,21 @@ import (
 // patKeyLen is the exact key length the store's AES-256-GCM cipher needs.
 const patKeyLen = 32
 
+// defaultPATTransientGrace bounds how long a stored PAT may go without a
+// successful validation before it is refused. A transient Keycloak failure keeps
+// the PAT but does not advance its timestamp, so an outage longer than this
+// fails closed rather than trusting a stale verdict indefinitely.
+const defaultPATTransientGrace = 15 * time.Minute
+
 // patSet is one user's recorded personal access tokens, encrypted on disk. The
 // identity travels with the tokens so revalidation can name the user when it
-// re-checks each PAT (the file name is only its hash).
+// re-checks each PAT (the file name is only its hash). LastValidated maps each
+// PAT's PATHash to the last successful validation, so a store written before
+// this field existed reads as stale rather than trusted.
 type patSet struct {
-	Identity string   `json:"identity"`
-	PATs     []string `json:"pats"`
+	Identity      string           `json:"identity"`
+	PATs          []string         `json:"pats"`
+	LastValidated map[string]int64 `json:"lastValidated,omitempty"`
 }
 
 // patStore keeps a reversible, AES-256-GCM-encrypted, per-user set of Keycloak
@@ -37,13 +46,18 @@ type patSet struct {
 // PAT. A missing key disables the store: nothing is recorded and an md5 client
 // keeps getting code 41.
 type patStore struct {
-	dir string
-	key []byte
-	mu  sync.RWMutex
+	dir   string
+	key   []byte
+	grace time.Duration
+	now   func() time.Time
+	mu    sync.RWMutex
 }
 
-func newPATStore(dir string, key []byte) *patStore {
-	return &patStore{dir: dir, key: key}
+func newPATStore(dir string, key []byte, grace time.Duration) *patStore {
+	if grace <= 0 {
+		grace = defaultPATTransientGrace
+	}
+	return &patStore{dir: dir, key: key, grace: grace, now: time.Now}
 }
 
 // Enabled reports whether the store will record and verify PATs.
@@ -75,12 +89,22 @@ func (st *patStore) Record(identity, pat string) error {
 	if set == nil {
 		set = &patSet{Identity: identity}
 	}
+	if set.LastValidated == nil {
+		set.LastValidated = make(map[string]int64)
+	}
+	found := false
 	for _, p := range set.PATs {
 		if p == pat {
-			return nil
+			found = true
+			break
 		}
 	}
-	set.PATs = append(set.PATs, pat)
+	if !found {
+		set.PATs = append(set.PATs, pat)
+	}
+	// A duplicate is a fresh successful validation: it refreshes the timestamp
+	// (and must persist it) without re-appending the PAT.
+	set.LastValidated[PATHash(pat)] = st.now().Unix()
 	return st.saveLocked(set)
 }
 
@@ -102,10 +126,45 @@ func (st *patStore) Match(user, token, salt string) (string, bool) {
 	for _, pat := range set.PATs {
 		got := []byte(md5Hex(pat + salt))
 		if subtle.ConstantTimeCompare(got, want) == 1 {
-			return set.Identity, true
+			return set.Identity, st.freshLocked(set, PATHash(pat))
 		}
 	}
 	return "", false
+}
+
+// Lookup reports whether patHash names one of identity's recorded PATs whose
+// last successful validation is within the transient grace. The plaintext PAT
+// never leaves the store.
+func (st *patStore) Lookup(identity, patHash string) bool {
+	if !st.Enabled() || identity == "" || patHash == "" {
+		return false
+	}
+	st.mu.RLock()
+	defer st.mu.RUnlock()
+	set, err := st.loadLocked(identity)
+	if err != nil || set == nil {
+		return false
+	}
+	want := []byte(patHash)
+	for _, pat := range set.PATs {
+		if subtle.ConstantTimeCompare([]byte(PATHash(pat)), want) == 1 {
+			return st.freshLocked(set, patHash)
+		}
+	}
+	return false
+}
+
+// freshLocked requires a successful validation within the grace. A missing
+// timestamp (including a store written before LastValidated existed) is stale.
+func (st *patStore) freshLocked(set *patSet, patHash string) bool {
+	if set == nil || set.LastValidated == nil {
+		return false
+	}
+	ts, ok := set.LastValidated[patHash]
+	if !ok || ts <= 0 {
+		return false
+	}
+	return st.now().Sub(time.Unix(ts, 0)) <= st.grace
 }
 
 func md5Hex(s string) string {
@@ -159,16 +218,22 @@ func (st *patStore) revalidateOne(ctx context.Context, v *validator, name string
 		return
 	}
 
-	// Drop only what this pass actually confirmed revoked; a PAT recorded
-	// while the SPI calls were in flight is kept.
-	revoked := make(map[string]bool)
+	// The snapshot decides only what to ask Keycloak about. The save below
+	// re-reads and merges, so a PAT recorded while the SPI calls were in flight
+	// keeps its place and its own timestamp.
+	validated := make(map[string]bool)
+	denied := make(map[string]bool)
 	for _, pat := range set.PATs {
+		ph := PATHash(pat)
 		if _, err := v.validate(ctx, set.Identity, pat); err != nil {
-			revoked[pat] = true
+			if errors.Is(err, errDenied) {
+				denied[ph] = true
+				continue
+			}
+			log.Printf("subsonic-auth: PAT store revalidate: keeping PAT after a temporary failure: %v", err)
+			continue
 		}
-	}
-	if len(revoked) == 0 {
-		return
+		validated[ph] = true
 	}
 
 	st.mu.Lock()
@@ -177,13 +242,32 @@ func (st *patStore) revalidateOne(ctx context.Context, v *validator, name string
 	if err != nil || current == nil {
 		return
 	}
-	kept := current.PATs[:0]
+
+	kept := make([]string, 0, len(current.PATs))
+	seen := make(map[string]bool, len(current.PATs))
 	for _, p := range current.PATs {
-		if !revoked[p] {
-			kept = append(kept, p)
+		ph := PATHash(p)
+		if denied[ph] {
+			continue
 		}
+		kept = append(kept, p)
+		seen[ph] = true
 	}
 	current.PATs = kept
+
+	// Only a hash present and successfully validated in this pass advances;
+	// a kept PAT recorded mid-pass retains the stamp Record gave it.
+	next := make(map[string]int64, len(kept))
+	for ph := range seen {
+		if validated[ph] {
+			next[ph] = st.now().Unix()
+			continue
+		}
+		if ts, ok := current.LastValidated[ph]; ok {
+			next[ph] = ts
+		}
+	}
+	current.LastValidated = next
 	if err := st.saveLocked(current); err != nil {
 		log.Printf("subsonic-auth: PAT store revalidate save: %v", err)
 	}
