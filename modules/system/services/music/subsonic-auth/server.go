@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"mime"
@@ -22,6 +23,10 @@ const (
 	subsonicErrorWrongCredentials = 40
 	subsonicErrorTokenUnsupported = 41
 )
+
+// errTokenRevoked means a correctly signed `ph` token's PAT is no longer in the
+// local store: the session is over even if the token has not expired.
+var errTokenRevoked = errors.New("token bound to a revoked personal access token")
 
 // loginPath is the endpoint Feishin's "Navidrome" server type POSTs to with a
 // JSON {username,password} body. Navidrome validates the password against its
@@ -162,12 +167,17 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 	// Explicit password credentials: HTTP Basic, or the Subsonic `u`/`p`
 	// parameters (a Keycloak PAT, plaintext or `enc:<hex>`).
 	if user, token, st := extractCredential(r, form); st == credOK {
-		identity, ok := s.validatePAT(r.Context(), user, token)
-		if !ok {
+		identity, err := s.validatePAT(r.Context(), user, token)
+		if err != nil {
+			if errors.Is(err, errTransient) {
+				s.unavailable(w, r, form)
+				return
+			}
+			// errDenied, or any unexpected failure, is a denial: fail closed.
 			s.deny(w, r, form, subsonicErrorWrongCredentials, "invalid or expired personal access token")
 			return
 		}
-		s.proxy(w, r, identity, form)
+		s.proxySession(w, r, identity, form, "")
 		return
 	}
 
@@ -175,12 +185,12 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 	// native `/api/*` client; it is verified statelessly, so it survives a
 	// restart until it expires, then the client re-logs-in with its saved PAT.
 	if token := bearerToken(r.Header.Get(ndAuthHeader)); token != "" {
-		identity, err := s.signer.Verify(token, "")
+		claims, expired, err := s.verifySessionToken(token, "")
 		if err != nil {
 			s.deny(w, r, form, subsonicErrorTokenUnsupported, "invalid or expired token")
 			return
 		}
-		s.proxy(w, r, identity, form)
+		s.proxySigned(w, r, claims, expired, form)
 		return
 	}
 
@@ -192,13 +202,18 @@ func (s *server) handle(w http.ResponseWriter, r *http.Request) {
 	// retry with the credential in plaintext `p` instead.
 	if token := param(r, form, "t"); token != "" {
 		user := param(r, form, "u")
-		if identity, err := s.signer.Verify(token, user); err == nil {
-			s.proxy(w, r, identity, form)
+		claims, expired, err := s.verifySessionToken(token, user)
+		switch {
+		case err == nil:
+			s.proxySigned(w, r, claims, expired, form)
+			return
+		case errors.Is(err, errTokenRevoked):
+			s.deny(w, r, form, subsonicErrorTokenUnsupported, "invalid or expired token")
 			return
 		}
 		if salt := param(r, form, "s"); salt != "" {
 			if identity, ok := s.patStore.Match(user, token, salt); ok {
-				s.proxy(w, r, identity, form)
+				s.proxySession(w, r, identity, form, "")
 				return
 			}
 		}
@@ -264,8 +279,12 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
-	identity, ok := s.validatePAT(r.Context(), req.Username, req.Password)
-	if !ok {
+	identity, err := s.validatePAT(r.Context(), req.Username, req.Password)
+	if err != nil {
+		if errors.Is(err, errTransient) {
+			s.writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "temporarily unavailable"})
+			return
+		}
 		s.writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
@@ -291,19 +310,21 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // validatePAT resolves (user, PAT) to the Keycloak identity, caching positive
-// validations briefly so polling and streaming do not re-hit Keycloak.
-func (s *server) validatePAT(ctx context.Context, user, token string) (string, bool) {
+// validations briefly so polling and streaming do not re-hit Keycloak. It
+// returns the validator's typed error so callers can tell a denial from an
+// outage.
+func (s *server) validatePAT(ctx context.Context, user, token string) (string, error) {
 	key := sha256.Sum256([]byte(user + "\x00" + token))
 	if identity, ok := s.cache.get(key); ok {
-		return identity, true
+		return identity, nil
 	}
 	identity, err := s.validator.validate(ctx, user, token)
 	if err != nil {
-		return "", false
+		return "", err
 	}
 	s.cache.set(key, identity)
 	s.recordPAT(identity, token)
-	return identity, true
+	return identity, nil
 }
 
 // recordPAT remembers a validated PAT so md5-only clients can later be checked
@@ -314,9 +335,91 @@ func (s *server) recordPAT(identity, token string) {
 	}
 }
 
-// proxy strips every client-supplied identity header (and the credential) and
-// sets the one identity header the upstream trusts.
-func (s *server) proxy(w http.ResponseWriter, r *http.Request, identity string, form url.Values) {
+// verifySessionToken verifies a signed token and, for a `ph` (PAT-bound) token,
+// requires the PAT to still be present and fresh in the local store before the
+// request is proxied. Tokens without `ph` keep the strict expiry check.
+func (s *server) verifySessionToken(token, user string) (tokenClaims, bool, error) {
+	claims, expired, err := s.signer.VerifyClaims(token, user)
+	if err != nil {
+		return tokenClaims{}, false, err
+	}
+	if claims.Ph == "" {
+		if expired {
+			return tokenClaims{}, false, errTokenExpired
+		}
+		return claims, false, nil
+	}
+	if !s.patStore.Lookup(claims.Sub, claims.Ph) {
+		return tokenClaims{}, false, errTokenRevoked
+	}
+	return claims, expired, nil
+}
+
+// proxySigned proxies a request authenticated by a signed token, minting a
+// fresh PAT-bound token when the presented one has expired but its PAT is still
+// in the store. The refresh is best-effort: the old token stays accepted.
+func (s *server) proxySigned(w http.ResponseWriter, r *http.Request, claims tokenClaims, expired bool, form url.Values) {
+	refresh := ""
+	if expired && claims.Ph != "" {
+		token, err := s.signer.SignWithPh(claims.Sub, claims.Ph)
+		if err != nil {
+			log.Printf("subsonic-auth: minting a refreshed session token: %v", err)
+		} else {
+			refresh = token
+		}
+	}
+	s.proxySession(w, r, claims.Sub, form, refresh)
+}
+
+// unavailable answers a transient Keycloak failure without treating the
+// credential as denied. `/rest` gets a successful envelope so a Subsonic client
+// retries; other paths get 503 with a retry hint.
+func (s *server) unavailable(w http.ResponseWriter, r *http.Request, form url.Values) {
+	if strings.HasPrefix(r.URL.Path, "/rest") {
+		s.writeSubsonicUnavailable(w, r, form)
+		return
+	}
+	w.Header().Set("Retry-After", "5")
+	http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+}
+
+// refreshHeaderWriter adds a refreshed session token to a successful proxied
+// response. It is applied when the status is committed, after the reverse proxy
+// has copied the upstream's headers.
+type refreshHeaderWriter struct {
+	http.ResponseWriter
+	token     string
+	committed bool
+}
+
+func (w *refreshHeaderWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *refreshHeaderWriter) WriteHeader(status int) {
+	if status >= 200 {
+		w.committed = true
+	}
+	w.apply(status)
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *refreshHeaderWriter) Write(b []byte) (int, error) {
+	if !w.committed {
+		w.committed = true
+		w.apply(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *refreshHeaderWriter) apply(status int) {
+	if w.token != "" && status >= 200 && status < 300 {
+		w.Header().Set(ndAuthHeader, "Bearer "+w.token)
+	}
+}
+
+// proxySession strips every client-supplied identity header (and the
+// credential), sets the one identity header the upstream trusts, and adds a
+// refreshed session token to the response when one was minted.
+func (s *server) proxySession(w http.ResponseWriter, r *http.Request, identity string, form url.Values, refresh string) {
 	r.Header.Del("Authorization")
 	r.Header.Del(ndAuthHeader)
 	scrubIdentityHeaders(r.Header)
@@ -334,7 +437,11 @@ func (s *server) proxy(w http.ResponseWriter, r *http.Request, identity string, 
 		r.Header.Set("Content-Length", strconv.Itoa(len(buf)))
 	}
 
-	s.proxyFor(r.URL.Path).ServeHTTP(w, r)
+	rw := http.ResponseWriter(w)
+	if refresh != "" {
+		rw = &refreshHeaderWriter{ResponseWriter: w, token: refresh}
+	}
+	s.proxyFor(r.URL.Path).ServeHTTP(rw, r)
 }
 
 // proxyAnonymous forwards a public request (Navidrome's `/share/img/<token>`
