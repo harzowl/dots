@@ -97,8 +97,14 @@ mkDotsModule {
         systemd.services."${cfg.name}-webui" = {
           description = "Seed qBittorrent's WebUI settings";
           wantedBy = [ "multi-user.target" ];
-          after = [ "docker-${cfg.name}.service" ];
-          wants = [ "docker-${cfg.name}.service" ];
+          after = [
+            "docker-${cfg.name}.service"
+            "secretspec.service"
+          ];
+          wants = [
+            "docker-${cfg.name}.service"
+            "secretspec.service"
+          ];
           partOf = [ "secretspec.service" ];
           path = [
             pkgs.python3

@@ -229,6 +229,115 @@
               bash ${self}/tests/slskd-import/run.sh
               touch "$out"
             '';
+
+        # A unit that reads `/run/secretspec/env` is a consumer without being
+        # listed, and a secret missing from the manifest fails evaluation.
+        secretspec-automation =
+          let
+            pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+            inherit (inputs.nixpkgs) lib;
+
+            manifest = builtins.toFile "secretspec.toml" ''
+              [project]
+              name = "dots-check"
+              revision = "1.0"
+              [providers]
+              sops = "sops://secrets.enc.yaml"
+              [profiles.default.defaults]
+              providers = ["sops"]
+              [profiles.default]
+              KNOWN = { description = "known" }
+              EXTRA = { description = "extra" }
+              OPT = { description = "opt", required = false }
+              [scopes.test]
+              secrets = ["KNOWN", "OPT"]
+            '';
+
+            mkSystem =
+              extra:
+              lib.nixosSystem {
+                system = "x86_64-linux";
+                modules = [
+                  ({ pkgs, ... }: {
+                    _module.args.pkgsUnstable =
+                      inputs.nixpkgs-unstable.legacyPackages.${pkgs.stdenv.hostPlatform.system};
+                  })
+                  (import ./modules/system/secretspec/default.nix)
+                  (_: {
+                    system.stateVersion = "26.05";
+                    boot.loader.grub.devices = [ "nodev" ];
+                    fileSystems."/" = {
+                      device = "/dev/sda1";
+                      fsType = "ext4";
+                    };
+
+                    dots.system.secretspec = {
+                      enable = true;
+                      inherit manifest;
+                      scope = "test";
+                    }
+                    // extra;
+
+                    systemd.services.reader = {
+                      wantedBy = [ "multi-user.target" ];
+                      serviceConfig.EnvironmentFile = [ "/run/secretspec/env" ];
+                      script = "true";
+                    };
+
+                    virtualisation.oci-containers = {
+                      backend = "docker";
+                      containers.box = {
+                        image = "alpine:latest";
+                        environmentFiles = [ "/run/secretspec/env" ];
+                      };
+                    };
+                  })
+                ];
+              };
+
+            good = mkSystem { };
+            bad = mkSystem { secrets = [ "MISSING" ]; };
+            check = good.config.dots.system.secretspec;
+
+            consumers = pkgs.writeText "consumers.json" (builtins.toJSON check.effectiveConsumers);
+            materialised = pkgs.writeText "materialised.json" (builtins.toJSON check.materialisedSecrets);
+            badMaterialised = pkgs.writeText "bad-materialised.json" (
+              builtins.toJSON bad.config.dots.system.secretspec.materialisedSecrets
+            );
+            expected = pkgs.writeText "expected.json" (
+              builtins.toJSON [
+                "KNOWN"
+                "OPT"
+              ]
+            );
+            unitScript = pkgs.writeText "secretspec-unit" good.config.systemd.services.secretspec.script;
+            goodAssertions = pkgs.writeText "good-assertions" (
+              lib.boolToString (lib.all (a: a.assertion) good.config.assertions)
+            );
+            badAssertions = pkgs.writeText "bad-assertions" (
+              lib.boolToString (lib.all (a: a.assertion) bad.config.assertions)
+            );
+          in
+          pkgs.runCommand "secretspec-automation"
+            {
+              nativeBuildInputs = [
+                pkgs.gnugrep
+                pkgs.jq
+              ];
+            }
+            ''
+              jq -e 'any(. == "reader.service")' ${consumers}
+              jq -e 'any(. == "docker-box.service")' ${consumers}
+              jq -e --slurpfile want ${expected} '. == $want[0]' ${materialised}
+              jq -e 'any(. == "MISSING")' ${badMaterialised}
+              grep -qx true ${goodAssertions}
+              grep -qx false ${badAssertions}
+              grep -q 'rm -f /run/secretspec/OPT' ${unitScript}
+              grep -q -- '--scope test' ${unitScript}
+              grep -q -- '--profile default' ${unitScript}
+              ! grep -q EXTRA ${unitScript}
+              touch "$out"
+            '';
       };
     };
 }

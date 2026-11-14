@@ -106,6 +106,10 @@ environment files. They must never be placed in module `settings` or committed
 to the repository. See [`AGENTS.md`](./AGENTS.md) for the full repository
 rules.
 
+[`dots.system.secretspec`](./modules/system/secretspec/default.nix) resolves the
+manifest's `[scopes.<name>]` into `/run/secretspec` and orders every unit that
+reads it, so a host names its scope rather than a secret or consumer list.
+
 ## License
 
 MIT
