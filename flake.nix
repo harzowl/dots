@@ -299,6 +299,54 @@
             bad = mkSystem { secrets = [ "MISSING" ]; };
             check = good.config.dots.system.secretspec;
 
+            # The admin unit reads the env file inside its script, so it is not
+            # derivable; the navidrome module must declare it as a consumer.
+            navidromeSystem = lib.nixosSystem {
+              system = "x86_64-linux";
+              modules = [
+                ({ pkgs, ... }: {
+                  _module.args.pkgsUnstable =
+                    inputs.nixpkgs-unstable.legacyPackages.${pkgs.stdenv.hostPlatform.system};
+                })
+                (import ./modules/system/docker)
+                (import ./modules/system/secretspec/default.nix)
+                (import ./modules/system/services/music/navidrome/default.nix)
+                (_: {
+                  system.stateVersion = "26.05";
+                  boot.loader.grub.devices = [ "nodev" ];
+                  fileSystems."/" = {
+                    device = "/dev/sda1";
+                    fsType = "ext4";
+                  };
+
+                  dots.system = {
+                    secretspec = {
+                      enable = true;
+                      inherit manifest;
+                      scope = "test";
+                    };
+
+                    services.music.navidrome = {
+                      enable = true;
+                      admin = {
+                        username = "admin";
+                        passwordFile = "/run/secretspec/env";
+                      };
+                    };
+                  };
+                })
+              ];
+            };
+            navidromeConsumers = pkgs.writeText "navidrome-consumers.json" (
+              builtins.toJSON navidromeSystem.config.dots.system.secretspec.effectiveConsumers
+            );
+            navidromeUnitAfter = pkgs.writeText "navidrome-admin-after.json" (
+              builtins.toJSON navidromeSystem.config.systemd.services."navidrome-admin".after
+            );
+            resolverBefore = pkgs.writeText "resolver-before.json" (
+              builtins.toJSON navidromeSystem.config.systemd.services.secretspec.before
+            );
+
             consumers = pkgs.writeText "consumers.json" (builtins.toJSON check.effectiveConsumers);
             materialised = pkgs.writeText "materialised.json" (builtins.toJSON check.materialisedSecrets);
             badMaterialised = pkgs.writeText "bad-materialised.json" (
@@ -328,6 +376,9 @@
             ''
               jq -e 'any(. == "reader.service")' ${consumers}
               jq -e 'any(. == "docker-box.service")' ${consumers}
+              jq -e 'any(. == "navidrome-admin.service")' ${navidromeConsumers}
+              jq -e 'any(. == "secretspec.service")' ${navidromeUnitAfter}
+              jq -e 'any(. == "navidrome-admin.service")' ${resolverBefore}
               jq -e --slurpfile want ${expected} '. == $want[0]' ${materialised}
               jq -e 'any(. == "MISSING")' ${badMaterialised}
               grep -qx true ${goodAssertions}

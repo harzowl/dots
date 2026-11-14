@@ -254,6 +254,20 @@ mkDotsModule {
       // lib.optionalAttrs (cfg.plugins.logLevel != null) {
         ND_PLUGINS_LOGLEVEL = cfg.plugins.logLevel;
       };
+
+      # The admin unit reads the password (and sync secret) with `sed` inside its
+      # script, which the consumer derivation cannot see; declare it here so it
+      # is ordered after the resolver.
+      adminConsumesSecretspec =
+        cfg.admin.username != null
+        && (
+          (
+            cfg.admin.passwordFile != null && lib.hasPrefix "/run/secretspec" (toString cfg.admin.passwordFile)
+          )
+          || (
+            cfg.admin.sync != null && lib.hasPrefix "/run/secretspec" (toString cfg.admin.sync.clientSecretFile)
+          )
+        );
     in
     lib.mkMerge [
       (mkDockerService.config {
@@ -267,6 +281,9 @@ mkDotsModule {
         };
         inherit defaults;
       } args)
+      (lib.mkIf adminConsumesSecretspec {
+        dots.system.secretspec.consumers = [ "${cfg.name}-admin.service" ];
+      })
       {
         assertions = [
           {

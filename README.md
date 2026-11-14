@@ -108,7 +108,9 @@ rules.
 
 [`dots.system.secretspec`](./modules/system/secretspec/default.nix) resolves the
 manifest's `[scopes.<name>]` into `/run/secretspec` and orders every unit that
-reads it, so a host names its scope rather than a secret or consumer list.
+reads it, so a host names its scope rather than a secret or consumer list. A
+unit that reads the file only inside a script cannot be derived and is declared
+by its service module.
 
 ## License
 
