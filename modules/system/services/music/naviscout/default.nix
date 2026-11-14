@@ -285,7 +285,6 @@ mkDotsModule {
       };
 
       catalog = {
-        path = opt lib.types.str "Legacy JSON catalogue store, imported once.";
         maxEntries = opt lib.types.ints.unsigned "Maximum catalogue entries (0 = no limit).";
         maxBytes = opt lib.types.ints.unsigned "Catalogue store byte budget (0 = no limit).";
         ttl = opt lib.types.str "Catalogue entry lifetime (a Go duration).";
@@ -502,7 +501,6 @@ mkDotsModule {
             (whenSet "NAVISCOUT_SEARCH_COLD_DEADLINE" cfg.search.coldDeadline)
             (whenSet "NAVISCOUT_ARTIST_DEADLINE" cfg.search.artistDeadline)
             (whenSet "NAVISCOUT_ALBUM_DEADLINE" cfg.search.albumDeadline)
-            (whenSet "NAVISCOUT_CATALOG_PATH" cfg.catalog.path)
             (whenSet "NAVISCOUT_CATALOG_MAX_ENTRIES" cfg.catalog.maxEntries)
             (whenSet "NAVISCOUT_CATALOG_MAX_BYTES" cfg.catalog.maxBytes)
             (whenSet "NAVISCOUT_CATALOG_TTL" cfg.catalog.ttl)
