@@ -115,6 +115,10 @@ TOKEN = re.compile(r"[A-Za-z0-9_+/=-]{40,}")
 # weaken the token-shape rule for every other token.
 ALLOW_TOKENS = {
     "oauth2ProxyInsecureOidcAllowUnverifiedEmail",
+    # Path-like runs (a release URL and fixture directories), not credentials.
+    "com/K0lin/jellyfin-plugin-sso/releases/download/v",
+    "tmp/incomplete/stale-user/Artist/Album/01",
+    "tmp/incomplete/recent-user/Artist/Album/01",
 }
 
 # Literal credential formats that are unambiguous regardless of entropy.
