@@ -36,10 +36,18 @@ mkDotsModule {
 
   options =
     { lib, ... }:
-    (mkDockerService.options {
-      inherit lib;
-      defaults = octoDefaults;
-    })
+    # The spec below fixes the loopback publish, closes the firewall and owns the
+    # mounts, so a host value for these three would be silently ignored.
+    lib.removeAttrs
+      (mkDockerService.options {
+        inherit lib;
+        defaults = octoDefaults;
+      })
+      [
+        "openFirewall"
+        "ports"
+        "volumes"
+      ]
     // {
       port = lib.mkOption {
         type = lib.types.port;

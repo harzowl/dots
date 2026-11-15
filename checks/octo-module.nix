@@ -16,45 +16,45 @@ let
       };
     };
 
-  system =
-    (import (pkgs.path + "/nixos/lib/eval-config.nix") {
-      system = "x86_64-linux";
-      modules = [
-        music
-        secretspecStub
-        (_: {
-          system.stateVersion = "26.05";
-          boot.loader.grub.devices = [ "nodev" ];
-          fileSystems."/" = {
-            device = "/dev/sda1";
-            fsType = "ext4";
-          };
+  evaluated = import (pkgs.path + "/nixos/lib/eval-config.nix") {
+    system = "x86_64-linux";
+    modules = [
+      music
+      secretspecStub
+      (_: {
+        system.stateVersion = "26.05";
+        boot.loader.grub.devices = [ "nodev" ];
+        fileSystems."/" = {
+          device = "/dev/sda1";
+          fsType = "ext4";
+        };
 
-          dots.system.services.music.octo = {
-            enable = true;
-            network = {
-              name = "music";
-              subnet = "10.90.0.0/24";
-            };
-            dataDir = "/srv/octo/shim-data";
-            configDir = "/srv/octo/config";
-            cacheDir = "/srv/octo/cache";
-            musicDir = "/srv/music";
-            shimUrl = "http://10.90.0.10:4184";
-            shimImage = "ghcr.io/example/yt-dlp-shim:dummy-DO-NOT-USE";
-            sonicImage = "ghcr.io/example/octo-sonic:dummy-DO-NOT-USE";
-            admin.username = "dummy-admin";
-            environmentFiles = [ "/run/secretspec/env" ];
-            lidarr = {
-              baseUrl = "http://lidarr.example.test:8686";
-              rootFolderPath = "/music";
-            };
-            memoryLimit = "1g";
+        dots.system.services.music.octo = {
+          enable = true;
+          network = {
+            name = "music";
+            subnet = "10.90.0.0/24";
           };
-        })
-      ];
-    }).config;
+          dataDir = "/srv/octo/shim-data";
+          configDir = "/srv/octo/config";
+          cacheDir = "/srv/octo/cache";
+          musicDir = "/srv/music";
+          shimUrl = "http://10.90.0.10:4184";
+          shimImage = "ghcr.io/example/yt-dlp-shim:dummy-DO-NOT-USE";
+          sonicImage = "ghcr.io/example/octo-sonic:dummy-DO-NOT-USE";
+          admin.username = "dummy-admin";
+          environmentFiles = [ "/run/secretspec/env" ];
+          lidarr = {
+            baseUrl = "http://lidarr.example.test:8686";
+            rootFolderPath = "/music";
+          };
+          memoryLimit = "1g";
+        };
+      })
+    ];
+  };
 
+  system = evaluated.config;
   containers = system.virtualisation.oci-containers.containers;
   octoContainer = containers.octo;
   shim = containers.yt-dlp-shim;
@@ -155,6 +155,13 @@ let
 
   openedPorts = system.networking.firewall.allowedTCPPorts;
 
+  octoOptions = evaluated.options.dots.system.services.music.octo;
+  overwrittenOptions = lib.filter (name: lib.hasAttr name octoOptions) [
+    "openFirewall"
+    "ports"
+    "volumes"
+  ];
+
   failures =
     lib.optional (
       names != [
@@ -177,6 +184,9 @@ let
     ++ lib.optional (
       wrongImages != [ ]
     ) "sidecar images were ignored: ${lib.concatStringsSep ", " wrongImages}"
+    ++
+      lib.optional (overwrittenOptions != [ ])
+        "options the module overwrites are still settable: ${lib.concatStringsSep ", " overwrittenOptions}"
     ++ lib.optional (
       !(builtins.elem "--memory=1g" octoContainer.extraOptions)
     ) "octo memory limit was not rendered"
