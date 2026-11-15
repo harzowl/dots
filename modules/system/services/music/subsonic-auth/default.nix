@@ -82,6 +82,16 @@ mkDotsModule {
         default = "X-Forwarded-Preferred-Username";
         description = "Header carrying the authenticated username to Navidrome.";
       };
+      adminUser = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = ''
+          Keycloak identity whose `/auth/login` is reported as an admin
+          (`isAdmin: true`). Octo captures a standing admin token only from such a
+          login, which is what its native library and scan calls need; empty
+          reports nobody as admin.
+        '';
+      };
       cacheTtl = lib.mkOption {
         type = lib.types.str;
         default = "60s";
@@ -175,6 +185,7 @@ mkDotsModule {
           keycloakRealm = cfg.realm;
           keycloakRequiredRole = cfg.requiredRole;
           inherit (cfg) identityHeader;
+          inherit (cfg) adminUser;
           inherit (cfg) cacheTtl;
           inherit (cfg) cacheSize;
           # The signing key (SUBSONIC_TOKEN_KEY) and the PAT store key

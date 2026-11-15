@@ -47,6 +47,7 @@ func main() {
 
 	srv := newServer(serverDeps{
 		identityHeader: cfg.identityHeader,
+		adminUser:      cfg.adminUser,
 		cache:          newCredCache(cfg.cacheTTL, cfg.cacheSize),
 		signer:         signer,
 		validator:      v,

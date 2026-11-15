@@ -19,6 +19,7 @@ type config struct {
 	realm           string
 	requiredRole    string
 	identityHeader  string
+	adminUser       string
 	cacheTTL        time.Duration
 	cacheSize       int
 	validateTimeout time.Duration
@@ -54,6 +55,7 @@ func loadConfig() (config, error) {
 		realm:           os.Getenv("KEYCLOAK_REALM"),
 		requiredRole:    os.Getenv("KEYCLOAK_REQUIRED_ROLE"),
 		identityHeader:  getenv("IDENTITY_HEADER", "X-Forwarded-Preferred-Username"),
+		adminUser:       os.Getenv("ADMIN_USER"),
 		cacheTTL:        getenvDuration("CACHE_TTL", 60*time.Second),
 		cacheSize:       getenvInt("CACHE_SIZE", 4096),
 		validateTimeout: getenvDuration("VALIDATE_TIMEOUT", 5*time.Second),

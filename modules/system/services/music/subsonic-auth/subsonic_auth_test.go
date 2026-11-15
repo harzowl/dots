@@ -149,6 +149,20 @@ func fakeKeycloak(t *testing.T, wantUser, wantToken string, calls *int32) *httpt
 	}))
 }
 
+func fakeKeycloakUsers(t *testing.T, tokens map[string]string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+		if !ok || tokens[u] != p {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("X-User", u)
+		w.Header().Set("X-User-Id", "uuid-1")
+		w.WriteHeader(http.StatusOK)
+	}))
+}
+
 type upstreamCapture struct {
 	identityHeader  string
 	authorization   string
@@ -184,6 +198,16 @@ func newTestServer(t *testing.T, keycloakURL string, upstreamURL string, ttl tim
 
 func newTestServerWithStore(t *testing.T, keycloakURL string, upstreamURL string, ttl time.Duration, store *patStore) *server {
 	t.Helper()
+	return newTestServerDeps(t, keycloakURL, upstreamURL, ttl, store, "")
+}
+
+func newTestServerWithAdmin(t *testing.T, keycloakURL string, upstreamURL string, ttl time.Duration, adminUser string) *server {
+	t.Helper()
+	return newTestServerDeps(t, keycloakURL, upstreamURL, ttl, newPATStore("", nil, 0), adminUser)
+}
+
+func newTestServerDeps(t *testing.T, keycloakURL string, upstreamURL string, ttl time.Duration, store *patStore, adminUser string) *server {
+	t.Helper()
 	u, err := url.Parse(upstreamURL)
 	if err != nil {
 		t.Fatalf("parse upstream: %v", err)
@@ -194,6 +218,7 @@ func newTestServerWithStore(t *testing.T, keycloakURL string, upstreamURL string
 	}
 	return newServer(serverDeps{
 		identityHeader: "X-Forwarded-Preferred-Username",
+		adminUser:      adminUser,
 		cache:          newCredCache(ttl, 16),
 		signer:         testSigner(t, ttl),
 		validator:      v,
@@ -255,6 +280,76 @@ func TestLoginReturnsDerivedTokenNotPAT(t *testing.T) {
 		if _, err := srv.signer.Verify(tok, "dummy-DO-NOT-USE-other@example.invalid"); err == nil {
 			t.Fatalf("%s verified for a different u", name)
 		}
+	}
+}
+
+func TestLoginReportsOnlyTheConfiguredAdmin(t *testing.T) {
+	const (
+		admin = "dummy-DO-NOT-USE-admin@example.invalid"
+		user  = "dummy-DO-NOT-USE-user@example.invalid"
+	)
+	kc := fakeKeycloakUsers(t, map[string]string{
+		admin: "dummy-DO-NOT-USE-pat-admin",
+		user:  "dummy-DO-NOT-USE-pat-user",
+	})
+	defer kc.Close()
+	up := fakeUpstream(t, &upstreamCapture{})
+	defer up.Close()
+
+	tests := []struct {
+		name      string
+		adminUser string
+		login     string
+		pat       string
+		want      bool
+	}{
+		{
+			name:      "configured admin",
+			adminUser: admin,
+			login:     admin,
+			pat:       "dummy-DO-NOT-USE-pat-admin",
+			want:      true,
+		},
+		{
+			name:      "configured admin, different case",
+			adminUser: strings.ToUpper(admin),
+			login:     admin,
+			pat:       "dummy-DO-NOT-USE-pat-admin",
+			want:      true,
+		},
+		{
+			name:      "another identity",
+			adminUser: admin,
+			login:     user,
+			pat:       "dummy-DO-NOT-USE-pat-user",
+			want:      false,
+		},
+		{
+			name:      "no admin configured",
+			adminUser: "",
+			login:     admin,
+			pat:       "dummy-DO-NOT-USE-pat-admin",
+			want:      false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newTestServerWithAdmin(t, kc.URL, up.URL, time.Minute, tt.adminUser)
+			rec := postLogin(t, srv, tt.login, tt.pat)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %q)", rec.Code, rec.Body.String())
+			}
+			var resp loginResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("body is not json: %v (%q)", err, rec.Body.String())
+			}
+			if resp.IsAdmin != tt.want {
+				t.Fatalf("isAdmin = %v, want %v", resp.IsAdmin, tt.want)
+			}
+			if resp.SubsonicSalt == "" || resp.SubsonicToken == "" || resp.Token == "" {
+				t.Fatalf("login dropped subsonicSalt/subsonicToken/token: %+v", resp)
+			}
+		})
 	}
 }
 

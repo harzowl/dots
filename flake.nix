@@ -184,6 +184,7 @@
               upstreamUrl = "UPSTREAM_URL";
               cacheDir = "CACHE_DIR";
               cacheEnabled = "CACHE_ENABLED";
+              adminUser = "ADMIN_USER";
               coverCacheDir = "COVER_CACHE_DIR";
               lastfmDbPath = "LASTFM_DB_PATH";
               catalogDb = "CATALOG_DB";

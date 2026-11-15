@@ -51,12 +51,15 @@ func isPublicImagePath(p string) bool {
 // success, proxies to Navidrome with a single trusted identity header.
 type server struct {
 	identityHeader string
-	cache          *credCache
-	signer         *tokenSigner
-	validator      *validator
-	patStore       *patStore
-	routes         []routeProxy
-	fallback       *httputil.ReverseProxy
+	// adminUser is the Keycloak identity /auth/login reports as an admin, so a
+	// client (Octo) captures a standing admin token from that one login.
+	adminUser string
+	cache     *credCache
+	signer    *tokenSigner
+	validator *validator
+	patStore  *patStore
+	routes    []routeProxy
+	fallback  *httputil.ReverseProxy
 }
 
 type routeProxy struct {
@@ -74,6 +77,7 @@ type upstreamRoute struct {
 
 type serverDeps struct {
 	identityHeader string
+	adminUser      string
 	cache          *credCache
 	signer         *tokenSigner
 	validator      *validator
@@ -99,6 +103,7 @@ func newServer(d serverDeps) *server {
 	}
 	return &server{
 		identityHeader: d.identityHeader,
+		adminUser:      d.adminUser,
 		cache:          d.cache,
 		signer:         d.signer,
 		validator:      d.validator,
@@ -303,6 +308,7 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		ID:            identity,
 		Name:          identity,
 		Username:      identity,
+		IsAdmin:       s.adminUser != "" && strings.EqualFold(identity, s.adminUser),
 		SubsonicSalt:  salt,
 		SubsonicToken: token,
 		Token:         token,
