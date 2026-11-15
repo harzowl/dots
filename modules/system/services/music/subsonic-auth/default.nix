@@ -161,6 +161,55 @@ mkDotsModule {
           timestamp, so an outage longer than this fails closed.
         '';
       };
+      front = {
+        enable = lib.mkEnableOption ''
+          the front bridge that turns the general gate's identity header into a
+          short-lived Subsonic token for Feishin, fronting Octo
+        '';
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 4188;
+          description = ''
+            Port the bridge listens on inside the container. The general gate
+            reaches it by container name on `network`, so it is not published.
+          '';
+        };
+        upstream = lib.mkOption {
+          type = lib.types.str;
+          default = "http://octo:8080";
+          description = "Octo base URL (no path); the bridge adds `/rest` itself.";
+        };
+        pathPrefix = lib.mkOption {
+          type = lib.types.str;
+          default = "/feishin";
+          description = ''
+            Public path prefix the gate proxies here. The bridge strips it and
+            only serves the `/rest…` API beneath it.
+          '';
+        };
+        identityHeader = lib.mkOption {
+          type = lib.types.str;
+          default = "X-Forwarded-Preferred-Username";
+          description = "Header the gate sets with the authenticated username; the bridge trusts only this one.";
+        };
+        tokenTtl = lib.mkOption {
+          type = lib.types.str;
+          default = "1h";
+          description = ''
+            Lifetime of the token the bridge mints per gated request. Keep it
+            short: the gate renews the browser session, not this credential.
+          '';
+        };
+        environmentFiles = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = ''
+            Dotenv files for the bridge. It reads the same `SUBSONIC_TOKEN_KEY`
+            and token kid as the native shim, so point it at the same file
+            (e.g. `/run/secretspec/env`) rather than restating the key here.
+          '';
+        };
+      };
     };
 
   toConfig =
@@ -168,38 +217,101 @@ mkDotsModule {
     let
       inherit (args) lib pkgs;
       binary = pkgs.callPackage ./package.nix { };
-    in
-    mkDockerService.config {
-      spec = cfg // {
-        ports = [ cfg.port ];
+      inherit (cfg) front;
+
+      # Reuse the native container's network, but never its static IP: the
+      # bridge answers to its container name, like the gate's other upstreams.
+      frontNetwork =
+        if cfg.network == null then
+          null
+        else
+          {
+            inherit (cfg.network) name subnet;
+            ip = null;
+          };
+
+      frontEnvironmentFiles =
+        if front.environmentFiles != [ ] then front.environmentFiles else cfg.environmentFiles;
+
+      frontSpec = cfg // {
+        name = "subsonic-bridge";
+        network = frontNetwork;
+        ports = [ ];
+        udpPorts = [ ];
+        openFirewall = false;
+        volumes = [ "${binary}/bin/subsonic-auth:/usr/local/bin/subsonic-auth:ro" ];
         entrypoint = "/usr/local/bin/subsonic-auth";
-        volumes = [
-          "${binary}/bin/subsonic-auth:/usr/local/bin/subsonic-auth:ro"
-          "${cfg.stateDir}:${cfg.stateDir}"
-        ];
+        environmentFiles = frontEnvironmentFiles;
         settings = {
-          listenAddr = "0.0.0.0:${toString cfg.port}";
-          inherit (cfg) upstream;
-          routes = lib.concatMapStringsSep "," (r: "${r.path}=${r.upstream}") cfg.routes;
-          inherit (cfg) keycloakUrl;
-          keycloakRealm = cfg.realm;
-          keycloakRequiredRole = cfg.requiredRole;
-          inherit (cfg) identityHeader;
-          inherit (cfg) adminUser;
-          inherit (cfg) cacheTtl;
-          inherit (cfg) cacheSize;
-          # The signing key (SUBSONIC_TOKEN_KEY) and the PAT store key
-          # (SUBSONIC_PAT_KEY) are NOT here — they come from `environmentFiles`
-          # so they never enter the Nix store.
+          mode = "front";
+          listenAddr = "0.0.0.0:${toString front.port}";
+          inherit (front) upstream pathPrefix identityHeader;
           subsonicTokenKid = cfg.tokenKid;
-          subsonicTokenTtl = cfg.tokenTtl;
           subsonicTokenAud = cfg.tokenAud;
-          inherit (cfg) validateTimeout;
-          patStoreDir = cfg.stateDir;
-          patRevalidateInterval = cfg.revalidateInterval;
-          patTransientGrace = cfg.transientGrace;
+          subsonicTokenTtl = front.tokenTtl;
         };
+        environment = { };
+        cmd = [ ];
+        extraOptions = [ ];
+        gpuPassthrough = false;
+        memoryLimit = null;
+        dockerMods = [ ];
+        dependsOn = [ ];
       };
-      inherit defaults;
-    } args;
+    in
+    lib.mkMerge [
+      (mkDockerService.config {
+        spec = cfg // {
+          ports = [ cfg.port ];
+          entrypoint = "/usr/local/bin/subsonic-auth";
+          volumes = [
+            "${binary}/bin/subsonic-auth:/usr/local/bin/subsonic-auth:ro"
+            "${cfg.stateDir}:${cfg.stateDir}"
+          ];
+          settings = {
+            listenAddr = "0.0.0.0:${toString cfg.port}";
+            inherit (cfg) upstream;
+            routes = lib.concatMapStringsSep "," (r: "${r.path}=${r.upstream}") cfg.routes;
+            inherit (cfg) keycloakUrl;
+            keycloakRealm = cfg.realm;
+            keycloakRequiredRole = cfg.requiredRole;
+            inherit (cfg) identityHeader;
+            inherit (cfg) adminUser;
+            inherit (cfg) cacheTtl;
+            inherit (cfg) cacheSize;
+            # The signing key (SUBSONIC_TOKEN_KEY) and the PAT store key
+            # (SUBSONIC_PAT_KEY) are NOT here — they come from `environmentFiles`
+            # so they never enter the Nix store.
+            subsonicTokenKid = cfg.tokenKid;
+            subsonicTokenTtl = cfg.tokenTtl;
+            subsonicTokenAud = cfg.tokenAud;
+            inherit (cfg) validateTimeout;
+            patStoreDir = cfg.stateDir;
+            patRevalidateInterval = cfg.revalidateInterval;
+            patTransientGrace = cfg.transientGrace;
+          };
+        };
+        inherit defaults;
+      } args)
+
+      (lib.mkIf front.enable (
+        mkDockerService.config {
+          spec = frontSpec;
+          inherit defaults;
+        } args
+      ))
+
+      {
+        assertions = [
+          {
+            assertion = !front.enable || cfg.network != null;
+            message = "dots.system.services.music.subsonic-auth.front needs `network` so the general gate can reach the bridge by container name.";
+          }
+          {
+            assertion = !front.enable || frontEnvironmentFiles != [ ];
+            message = "dots.system.services.music.subsonic-auth.front needs `environmentFiles` with SUBSONIC_TOKEN_KEY (the key never belongs in `settings`).";
+          }
+        ];
+      }
+    ];
 }
