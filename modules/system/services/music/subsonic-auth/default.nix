@@ -192,6 +192,15 @@ mkDotsModule {
           default = "X-Forwarded-Preferred-Username";
           description = "Header the gate sets with the authenticated username; the bridge trusts only this one.";
         };
+        publicCoverPath = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          description = ''
+            Exact path the bridge also serves without the gate's identity header,
+            for image fetchers that cannot hold a session. The bridge always asks
+            Octo for `/rest/getCoverArt.view` as `adminUser`; empty disables it.
+          '';
+        };
         tokenTtl = lib.mkOption {
           type = lib.types.str;
           default = "1h";
@@ -245,7 +254,13 @@ mkDotsModule {
         settings = {
           mode = "front";
           listenAddr = "0.0.0.0:${toString front.port}";
-          inherit (front) upstream pathPrefix identityHeader;
+          inherit (front)
+            upstream
+            pathPrefix
+            identityHeader
+            publicCoverPath
+            ;
+          inherit (cfg) adminUser;
           subsonicTokenKid = cfg.tokenKid;
           subsonicTokenAud = cfg.tokenAud;
           subsonicTokenTtl = front.tokenTtl;
@@ -310,6 +325,10 @@ mkDotsModule {
           {
             assertion = !front.enable || frontEnvironmentFiles != [ ];
             message = "dots.system.services.music.subsonic-auth.front needs `environmentFiles` with SUBSONIC_TOKEN_KEY (the key never belongs in `settings`).";
+          }
+          {
+            assertion = !front.enable || front.publicCoverPath == "" || cfg.adminUser != "";
+            message = "dots.system.services.music.subsonic-auth.front.publicCoverPath needs `adminUser`: the public cover token is minted for it.";
           }
         ];
       }

@@ -91,10 +91,12 @@ func runFront() {
 		log.Fatalf("subsonic-bridge: invalid token signing key: %v", err)
 	}
 	srv := newBridgeServer(bridgeDeps{
-		identityHeader: cfg.identityHeader,
-		pathPrefix:     cfg.pathPrefix,
-		signer:         signer,
-		upstream:       cfg.upstream,
+		identityHeader:  cfg.identityHeader,
+		pathPrefix:      cfg.pathPrefix,
+		adminUser:       cfg.adminUser,
+		publicCoverPath: cfg.publicCoverPath,
+		signer:          signer,
+		upstream:        cfg.upstream,
 	})
 	httpServer := &http.Server{
 		Addr:              cfg.listenAddr,
@@ -102,7 +104,7 @@ func runFront() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	log.Printf("subsonic-bridge: %s -> %s%s (identity %s, token kid %s ttl %s)",
-		cfg.listenAddr, cfg.upstream, cfg.pathPrefix, cfg.identityHeader, cfg.tokenKid, cfg.tokenTTL)
+	log.Printf("subsonic-bridge: %s -> %s%s (identity %s, token kid %s ttl %s, public cover %q)",
+		cfg.listenAddr, cfg.upstream, cfg.pathPrefix, cfg.identityHeader, cfg.tokenKid, cfg.tokenTTL, cfg.publicCoverPath)
 	log.Fatal(httpServer.ListenAndServe())
 }

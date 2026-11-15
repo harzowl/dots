@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,10 +12,15 @@ import (
 	"time"
 )
 
-const bridgeIdentity = "dummy-DO-NOT-USE@example.invalid"
+const (
+	bridgeIdentity = "dummy-DO-NOT-USE@example.invalid"
+	bridgeAdmin    = "dummy-admin-DO-NOT-USE@example.invalid"
+	publicCover    = "/rest/getCoverArt.view"
+)
 
 type bridgeCapture struct {
 	hits      int32
+	method    string
 	path      string
 	rawQuery  string
 	identity  string
@@ -26,6 +33,7 @@ func fakeBridgeUpstream(t *testing.T, cap *bridgeCapture) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&cap.hits, 1)
+		cap.method = r.Method
 		cap.path = r.URL.Path
 		cap.rawQuery = r.URL.RawQuery
 		cap.identity = r.Header.Get("X-Forwarded-Preferred-Username")
@@ -44,11 +52,13 @@ func newBridge(t *testing.T, upstreamURL string, ttl time.Duration) *bridgeServe
 		t.Fatalf("parse upstream: %v", err)
 	}
 	return newBridgeServer(bridgeDeps{
-		identityHeader: "X-Forwarded-Preferred-Username",
-		pathPrefix:     "/feishin",
-		signer:         testSigner(t, ttl),
-		upstream:       u,
-		salt:           func() (string, error) { return "abcdef", nil },
+		identityHeader:  "X-Forwarded-Preferred-Username",
+		pathPrefix:      "/feishin",
+		adminUser:       bridgeAdmin,
+		publicCoverPath: publicCover,
+		signer:          testSigner(t, ttl),
+		upstream:        u,
+		salt:            func() (string, error) { return "abcdef", nil },
 	})
 }
 
@@ -196,10 +206,198 @@ func TestBridgeMissingIdentityIsUnauthorized(t *testing.T) {
 	}
 }
 
+// TestBridgePublicCoverWithoutIdentity is the public path's happy case: no gate
+// identity header, no client credential, and the request still reaches Octo as
+// the configured admin with a token that verifies for that admin.
+func TestBridgePublicCoverWithoutIdentity(t *testing.T) {
+	cap := &bridgeCapture{}
+	up := fakeBridgeUpstream(t, cap)
+	defer up.Close()
+	srv := newBridge(t, up.URL, time.Hour)
+
+	rec := bridgeRequest(t, srv, http.MethodGet,
+		publicCover+"?id=al-1&size=300&v=1.16.1&c=Feishin&f=json&u=attacker&p=dummy-DO-NOT-USE-pat&t=stale&s=stale",
+		map[string]string{
+			"X-Forwarded-Preferred-Username": "attacker@example.invalid",
+			"Authorization":                  "Basic YXR0YWNrZXI6cGF0",
+			ndAuthHeader:                     "Bearer client-token",
+		})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %q)", rec.Code, rec.Body.String())
+	}
+	if got := atomic.LoadInt32(&cap.hits); got != 1 {
+		t.Fatalf("upstream hits = %d, want 1", got)
+	}
+	if cap.path != coverArtPath {
+		t.Fatalf("upstream path = %q, want %q", cap.path, coverArtPath)
+	}
+	if cap.method != http.MethodGet {
+		t.Fatalf("upstream method = %q, want GET", cap.method)
+	}
+	if cap.identity != "" || cap.auth != "" || cap.ndAuth != "" {
+		t.Fatalf("client identity or credential leaked upstream: identity=%q auth=%q ndAuth=%q",
+			cap.identity, cap.auth, cap.ndAuth)
+	}
+
+	q, err := url.ParseQuery(cap.rawQuery)
+	if err != nil {
+		t.Fatalf("upstream query is not urlencoded: %v", err)
+	}
+	if got := q.Get("u"); got != bridgeAdmin {
+		t.Fatalf("u = %q, want the admin identity %q", got, bridgeAdmin)
+	}
+	if q.Has("p") || strings.Contains(cap.rawQuery, "stale") {
+		t.Fatalf("client credential forwarded upstream: %q", cap.rawQuery)
+	}
+	for k, want := range map[string]string{
+		"id": "al-1", "size": "300", "v": "1.16.1", "c": "Feishin", "f": "json",
+	} {
+		if got := q.Get(k); got != want {
+			t.Fatalf("%s = %q, want %q", k, got, want)
+		}
+	}
+
+	claims, expired, err := srv.signer.VerifyClaims(q.Get("t"), bridgeAdmin)
+	if err != nil {
+		t.Fatalf("minted t does not verify for the admin: %v", err)
+	}
+	if expired {
+		t.Fatal("minted cover token is already expired")
+	}
+	if got, want := claims.Exp-claims.Iat, int64(time.Hour/time.Second); got != want {
+		t.Fatalf("token lifetime = %ds, want %ds (the bridge TTL)", got, want)
+	}
+}
+
+func TestBridgePublicCoverAllowsHeadOnly(t *testing.T) {
+	for _, tt := range []struct {
+		method     string
+		wantStatus int
+		wantHits   int32
+	}{
+		{method: http.MethodHead, wantStatus: http.StatusOK, wantHits: 1},
+		{method: http.MethodPost, wantStatus: http.StatusMethodNotAllowed, wantHits: 0},
+		{method: http.MethodPut, wantStatus: http.StatusMethodNotAllowed, wantHits: 0},
+	} {
+		t.Run(tt.method, func(t *testing.T) {
+			cap := &bridgeCapture{}
+			up := fakeBridgeUpstream(t, cap)
+			defer up.Close()
+			srv := newBridge(t, up.URL, time.Hour)
+
+			rec := bridgeRequest(t, srv, tt.method, publicCover+"?id=al-1", nil)
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d", rec.Code, tt.wantStatus)
+			}
+			if got := atomic.LoadInt32(&cap.hits); got != tt.wantHits {
+				t.Fatalf("upstream hits = %d, want %d", got, tt.wantHits)
+			}
+		})
+	}
+}
+
+func TestBridgePublicCoverIsExactAndAlone(t *testing.T) {
+	for _, path := range []string{
+		"/rest/ping.view",
+		"/rest/getAlbum.view?id=al-1",
+		"/rest/getArtists.view",
+		"/rest/stream?id=tr-1",
+		"/rest/search3.view?query=x",
+		publicCover + "/",
+		publicCover + "/extra",
+		"/rest/getCoverArt.viewx",
+		"/admin",
+	} {
+		t.Run(path, func(t *testing.T) {
+			cap := &bridgeCapture{}
+			up := fakeBridgeUpstream(t, cap)
+			defer up.Close()
+			srv := newBridge(t, up.URL, time.Hour)
+
+			rec := bridgeRequest(t, srv, http.MethodGet, path, nil)
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("%s: status = %d, want 404 (body %q)", path, rec.Code, rec.Body.String())
+			}
+			if got := atomic.LoadInt32(&cap.hits); got != 0 {
+				t.Fatalf("%s: upstream called %d times, want 0", path, got)
+			}
+		})
+	}
+}
+
+func TestBridgePublicCoverDoesNotLogToken(t *testing.T) {
+	cap := &bridgeCapture{}
+	up := fakeBridgeUpstream(t, cap)
+	defer up.Close()
+	srv := newBridge(t, up.URL, time.Hour)
+
+	var logs bytes.Buffer
+	original := log.Writer()
+	log.SetOutput(&logs)
+	defer log.SetOutput(original)
+
+	rec := bridgeRequest(t, srv, http.MethodGet, publicCover+"?id=al-1&size=300", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	q, err := url.ParseQuery(cap.rawQuery)
+	if err != nil {
+		t.Fatalf("upstream query is not urlencoded: %v", err)
+	}
+	token := q.Get("t")
+	if token == "" {
+		t.Fatal("no token was minted")
+	}
+	if strings.Contains(logs.String(), token) {
+		t.Fatalf("log output contains the minted token: %q", logs.String())
+	}
+}
+
+func TestLoadFrontConfigPublicCover(t *testing.T) {
+	t.Setenv("SUBSONIC_TOKEN_KEY", strings.Repeat("k", 32))
+	t.Setenv("ADMIN_USER", bridgeAdmin)
+	t.Setenv("PUBLIC_COVER_PATH", publicCover)
+
+	cfg, err := loadFrontConfig()
+	if err != nil {
+		t.Fatalf("loadFrontConfig: %v", err)
+	}
+	if cfg.publicCoverPath != publicCover {
+		t.Fatalf("public cover path = %q, want %q", cfg.publicCoverPath, publicCover)
+	}
+	if cfg.adminUser != bridgeAdmin {
+		t.Fatalf("admin user = %q, want %q", cfg.adminUser, bridgeAdmin)
+	}
+}
+
+func TestLoadFrontConfigPublicCoverNeedsAdmin(t *testing.T) {
+	t.Setenv("SUBSONIC_TOKEN_KEY", strings.Repeat("k", 32))
+	t.Setenv("ADMIN_USER", "")
+	t.Setenv("PUBLIC_COVER_PATH", publicCover)
+
+	_, err := loadFrontConfig()
+	if err == nil || !strings.Contains(err.Error(), "ADMIN_USER") {
+		t.Fatalf("loadFrontConfig() error = %v, want it to name ADMIN_USER", err)
+	}
+}
+
+func TestLoadFrontConfigRejectsBroadCoverPath(t *testing.T) {
+	t.Setenv("SUBSONIC_TOKEN_KEY", strings.Repeat("k", 32))
+	t.Setenv("ADMIN_USER", bridgeAdmin)
+	for _, path := range []string{"/rest/*", "/rest/", "/rest", "/cover", publicCover + "/"} {
+		t.Setenv("PUBLIC_COVER_PATH", path)
+		if _, err := loadFrontConfig(); err == nil {
+			t.Fatalf("loadFrontConfig accepted PUBLIC_COVER_PATH %q", path)
+		}
+	}
+}
+
 func TestLoadFrontConfigDefaults(t *testing.T) {
 	for _, k := range []string{
 		"LISTEN_ADDR", "UPSTREAM", "PATH_PREFIX", "IDENTITY_HEADER",
 		"SUBSONIC_TOKEN_KID", "SUBSONIC_TOKEN_AUD", "SUBSONIC_TOKEN_TTL",
+		"ADMIN_USER", "PUBLIC_COVER_PATH",
 	} {
 		t.Setenv(k, "")
 	}
