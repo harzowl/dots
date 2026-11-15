@@ -121,6 +121,17 @@ in
         '';
       };
 
+      environment = opt "environment" {
+        type = lib.types.attrsOf lib.types.anything;
+        default = { };
+        description = ''
+          Environment variables by their exact names, for an image whose
+          variables are not upper-snake (`Subsonic__Url`, `Library__DownloadPath`).
+          Values are stringified as `settings` values are, and an exact name
+          overrides the same variable derived from `settings`.
+        '';
+      };
+
       cmd = opt "cmd" {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -303,12 +314,14 @@ in
         else
           toString v;
 
-      environment = lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) (
-        settings
-        // lib.optionalAttrs (spec.dockerMods or [ ] != [ ]) {
-          dockerMods = lib.concatStringsSep "|" spec.dockerMods;
-        }
-      );
+      environment =
+        lib.mapAttrs' (k: v: lib.nameValuePair (envKey k) (envValue v)) (
+          settings
+          // lib.optionalAttrs (spec.dockerMods or [ ] != [ ]) {
+            dockerMods = lib.concatStringsSep "|" spec.dockerMods;
+          }
+        )
+        // lib.mapAttrs (_: envValue) (spec.environment or { });
 
       gpuMode = config.dots.system.docker.gpu or null;
       gpuEnabled = spec.gpuPassthrough or false;

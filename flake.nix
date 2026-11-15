@@ -100,6 +100,15 @@
             inherit (pkgs) lib;
           };
 
+        docker-environment =
+          let
+            pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+          in
+          import ./checks/docker-environment.nix {
+            inherit pkgs;
+            inherit (pkgs) lib;
+          };
+
         secret-scan =
           let
             pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
