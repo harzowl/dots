@@ -91,6 +91,15 @@
               touch "$out"
             '';
 
+        docker-depends-on =
+          let
+            pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+          in
+          import ./checks/docker-depends-on.nix {
+            inherit pkgs;
+            inherit (pkgs) lib;
+          };
+
         secret-scan =
           let
             pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;

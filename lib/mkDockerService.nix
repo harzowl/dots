@@ -439,16 +439,10 @@ in
               }
             ) spec.environmentFiles
           )
-          // lib.optionalAttrs (dependsOnUnits != [ ]) {
-            "${spec.backend}-${spec.name}" = {
-              after = dependsOnUnits;
-              requires = dependsOnUnits;
-            };
-          }
           // {
             "${spec.backend}-${spec.name}" = {
-              after = [ "${spec.backend}.service" ];
-              requires = [ "${spec.backend}.service" ];
+              after = lib.unique ([ "${spec.backend}.service" ] ++ dependsOnUnits);
+              requires = lib.unique ([ "${spec.backend}.service" ] ++ dependsOnUnits);
               startLimitBurst = lib.mkDefault (spec.startLimitBurst or 5);
               startLimitIntervalSec = lib.mkDefault (spec.startLimitIntervalSec or 60);
               serviceConfig = {
