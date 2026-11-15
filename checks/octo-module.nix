@@ -41,6 +41,8 @@ let
             cacheDir = "/srv/octo/cache";
             musicDir = "/srv/music";
             shimUrl = "http://10.90.0.10:4184";
+            shimImage = "ghcr.io/example/yt-dlp-shim:dummy-DO-NOT-USE";
+            sonicImage = "ghcr.io/example/octo-sonic:dummy-DO-NOT-USE";
             admin.username = "dummy-admin";
             environmentFiles = [ "/run/secretspec/env" ];
             lidarr = {
@@ -143,6 +145,16 @@ let
 
   missingSonicFlags = lib.filter (flag: !(builtins.elem flag sonic.extraOptions)) sonicFlags;
 
+  expectedImages = {
+    yt-dlp-shim = "ghcr.io/example/yt-dlp-shim:dummy-DO-NOT-USE";
+    octo-sonic = "ghcr.io/example/octo-sonic:dummy-DO-NOT-USE";
+  };
+  wrongImages = lib.filter (name: containers.${name}.image != expectedImages.${name}) (
+    lib.attrNames expectedImages
+  );
+
+  openedPorts = system.networking.firewall.allowedTCPPorts;
+
   failures =
     lib.optional (
       names != [
@@ -159,8 +171,12 @@ let
       wrongShimEnv != [ ]
     ) "wrong shim environment: ${lib.concatStringsSep ", " wrongShimEnv}"
     ++ lib.optional (
-      octoContainer.ports != [ "5274:8080" ]
-    ) "octo ports = ${builtins.toJSON octoContainer.ports}, want 5274:8080"
+      octoContainer.ports != [ "127.0.0.1:5274:8080" ]
+    ) "octo ports = ${builtins.toJSON octoContainer.ports}, want 127.0.0.1:5274:8080"
+    ++ lib.optional (builtins.elem 5274 openedPorts) "the octo host port is open in the firewall: ${builtins.toJSON openedPorts}"
+    ++ lib.optional (
+      wrongImages != [ ]
+    ) "sidecar images were ignored: ${lib.concatStringsSep ", " wrongImages}"
     ++ lib.optional (
       !(builtins.elem "--memory=1g" octoContainer.extraOptions)
     ) "octo memory limit was not rendered"

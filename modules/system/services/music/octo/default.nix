@@ -18,7 +18,7 @@ let
     image = "ghcr.io/winters27/octo-sonic:2026.11.13";
   };
 
-  containerPort = 8080;
+  sidecarPort = 8080;
   musicPath = "/music";
   configPath = "/app/config";
   ytdlpPath = "/opt/ytdlp";
@@ -44,7 +44,13 @@ mkDotsModule {
       port = lib.mkOption {
         type = lib.types.port;
         default = 5274;
-        description = "Port Octo is published on; the container listens on `${toString containerPort}`.";
+        description = "Host port Octo is published on, on loopback only — the music-network gate reaches it as `octo:<containerPort>`.";
+      };
+
+      containerPort = lib.mkOption {
+        type = lib.types.port;
+        default = 8080;
+        description = "Port Octo listens on inside the container, and the one the gate reaches on the music network.";
       };
 
       network = lib.mkOption {
@@ -323,7 +329,7 @@ mkDotsModule {
         Updates__Check = false;
       }
       // lib.optionalAttrs cfg.stream.enable {
-        YouTube__ShimUrl = "http://${shimContainer.name}:${toString containerPort}";
+        YouTube__ShimUrl = "http://${shimContainer.name}:${toString sidecarPort}";
       }
       // lib.optionalAttrs (lidarrEnabled && cfg.lidarr.baseUrl != null) {
         Lidarr__BaseUrl = cfg.lidarr.baseUrl;
@@ -392,7 +398,8 @@ mkDotsModule {
     lib.mkMerge [
       (mkDockerService.config {
         spec = cfg // {
-          ports = [ "${toString cfg.port}:${toString containerPort}" ];
+          ports = [ "127.0.0.1:${toString cfg.port}:${toString cfg.containerPort}" ];
+          openFirewall = false;
           volumes = [
             "${cfg.configDir}:${configPath}"
             "${cfg.musicDir}:${musicPath}"
@@ -406,7 +413,9 @@ mkDotsModule {
       } args)
 
       (lib.mkIf cfg.stream.enable (sidecar {
-        defaults = shimContainer;
+        defaults = shimContainer // {
+          image = cfg.shimImage;
+        };
         environment = {
           YTDLP_PLAYER_CLIENT = cfg.stream.playerClient;
           SHIM_THREADS = 128;
@@ -424,7 +433,9 @@ mkDotsModule {
       }))
 
       (sidecar {
-        defaults = sonicContainer;
+        defaults = sonicContainer // {
+          image = cfg.sonicImage;
+        };
         environment = {
           MUSIC_ROOT = musicPath;
           ANALYSE_CONCURRENCY = 1;
