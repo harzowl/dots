@@ -109,6 +109,15 @@
             inherit (pkgs) lib;
           };
 
+        octo-module =
+          let
+            pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
+          in
+          import ./checks/octo-module.nix {
+            inherit pkgs;
+            inherit (pkgs) lib;
+          };
+
         secret-scan =
           let
             pkgs = inputs.nixpkgs.legacyPackages.x86_64-linux;
