@@ -3,13 +3,25 @@
 # downloads with no Soulseek source, the secret remap, and the sidecar wiring.
 { lib, pkgs }:
 let
-  octo = import ../modules/system/services/music/octo/default.nix;
+  music = import ../modules/system/services/music;
+
+  # The navidrome module beside octo declares this consumer list; the check only
+  # cares about what octo renders.
+  secretspecStub =
+    { lib, ... }:
+    {
+      options.dots.system.secretspec.consumers = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+      };
+    };
 
   system =
     (import (pkgs.path + "/nixos/lib/eval-config.nix") {
       system = "x86_64-linux";
       modules = [
-        octo
+        music
+        secretspecStub
         (_: {
           system.stateVersion = "26.05";
           boot.loader.grub.devices = [ "nodev" ];
