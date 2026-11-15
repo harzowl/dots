@@ -2,6 +2,9 @@
 // authenticates native Subsonic clients against Keycloak personal access
 // tokens. Browsers (which carry the oauth2-proxy session cookie) are routed to
 // the oauth2-proxy gate by the front proxy instead and never reach this shim.
+//
+// Its front mode is the web bridge in front of Octo: it trusts the gate's
+// identity header and mints the same signed token, so Feishin needs no PAT.
 package main
 
 import (
@@ -9,10 +12,22 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 )
 
 func main() {
+	switch mode := os.Getenv("MODE"); mode {
+	case "", "native":
+		runNative()
+	case "front":
+		runFront()
+	default:
+		log.Fatalf("subsonic-auth: unknown MODE %q (want native or front)", mode)
+	}
+}
+
+func runNative() {
 	cfg, err := loadConfig()
 	if err != nil {
 		log.Fatalf("subsonic-auth: %v", err)
@@ -63,5 +78,31 @@ func main() {
 
 	log.Printf("subsonic-auth: %s -> %s (keycloak %s realm %s, token kid %s ttl %s)",
 		cfg.listenAddr, cfg.upstream, cfg.keycloakURL, cfg.realm, cfg.tokenKid, cfg.tokenTTL)
+	log.Fatal(httpServer.ListenAndServe())
+}
+
+func runFront() {
+	cfg, err := loadFrontConfig()
+	if err != nil {
+		log.Fatalf("subsonic-bridge: %v", err)
+	}
+	signer, err := newTokenSigner(cfg.tokenKid, cfg.tokenKeys, cfg.tokenTTL, cfg.tokenAud)
+	if err != nil {
+		log.Fatalf("subsonic-bridge: invalid token signing key: %v", err)
+	}
+	srv := newBridgeServer(bridgeDeps{
+		identityHeader: cfg.identityHeader,
+		pathPrefix:     cfg.pathPrefix,
+		signer:         signer,
+		upstream:       cfg.upstream,
+	})
+	httpServer := &http.Server{
+		Addr:              cfg.listenAddr,
+		Handler:           srv.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	log.Printf("subsonic-bridge: %s -> %s%s (identity %s, token kid %s ttl %s)",
+		cfg.listenAddr, cfg.upstream, cfg.pathPrefix, cfg.identityHeader, cfg.tokenKid, cfg.tokenTTL)
 	log.Fatal(httpServer.ListenAndServe())
 }
